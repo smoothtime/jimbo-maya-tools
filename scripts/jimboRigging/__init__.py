@@ -1,0 +1,1 @@
+# Initialize rigging package

@@ -1,0 +1,16 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Maya specific files
+*.mb
+*.ma
+*.swatch
+Maya.env
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
