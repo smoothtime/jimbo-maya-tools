@@ -12,21 +12,62 @@ A collection of custom Python scripts and tools for Autodesk Maya, specifically 
 
 ## Installation
 
+> **Important Note for School/Studio Computers:** 
+> If you are working on a machine that wipes its local drives regularly (like the Downloads or Desktop folders), make sure to extract this toolset to a persistent network drive or external drive *before* installing. The `.mod` installation relies on the folder staying exactly where it was when you installed it!
+
+There are three ways to install this toolset.
+
+### Method 1: Drag-and-Drop Installer (Easiest)
+1. Clone or download this repository and extract it anywhere on your computer.
+2. Open Maya.
+3. Drag and drop the `install.py` file from the repository folder directly into the Maya viewport.
+4. Restart Maya. 
+
+### Method 2: Manual Maya Module (.mod)
+This method is non-destructive and doesn't require scattering files across your Maya preferences.
+1. Clone or download this repository and place the `jimbo-maya-tools` folder anywhere on your computer.
+2. Copy the `jimboRigging.mod` template file from this repository into your Maya modules directory:
+   - **Windows:** `C:\Users\<YourUsername>\Documents\maya\modules\`
+3. Add the following lines to the `jimboRigging.mod` file, replacing the path with the actual location where you saved the repository:
+   ```text
+   + jimboRigging 1.0 C:/Path/To/Your/jimbo-maya-tools
+   MAYA_SHELF_PATH +:= shelves
+   ```
+4. Restart Maya.
+
+### Method 3: Manual Installation
+If you prefer to install files directly into your Maya user preferences:
 1. Clone or download this repository.
-2. Add the `scripts` folder to your Maya `PYTHONPATH`. You can do this in your `Maya.env` file or dynamically via Python inside Maya:
-
-```python
-import sys
-sys.path.append(r"PATH_TO_YOUR_DIRECTORY/jimbo-maya-tools/scripts")
-```
-
-3. (Optional) If you have plugins or shelf files you want to use, ensure their respective paths are added to `MAYA_PLUG_IN_PATH` and `MAYA_SHELF_PATH`.
+2. Copy the `jimboRigging` folder from inside `scripts/` into your Maya user scripts directory:
+   - **Windows:** `C:\Users\<YourUsername>\Documents\maya\scripts\`
+3. Copy the shelf file from `shelves/` into your Maya user shelves directory:
+   - **Windows:** `C:\Users\<YourUsername>\Documents\maya\<version>\prefs\shelves\`
+4. Copy the icon files from `icons/` into your Maya user icons directory:
+   - **Windows:** `C:\Users\<YourUsername>\Documents\maya\<version>\prefs\icons\`
 
 ## Usage
 
-To use the rigging tools in Maya's Script Editor (Python tab):
+The shelf .mel script will give you a button to launch the Auto Control Rig UI.
+
+If you want to add the command to an existing shelf the script is below
 
 ```python
-import jimboRigging
-# import specific rigging tools here
+import importlib
+import jimboRigging.autoRig
+importlib.reload(jimboRigging.autoRig)
+from jimboRigging.autoRig import ControlRigUI
+
+my_ui = ControlRigUI()
+my_ui.show()
 ```
+
+## Uninstallation
+
+If you installed via **Method 1** or **Method 2 (Maya Module)**:
+1. Navigate to your Maya modules directory (e.g., `C:\Users\<YourUsername>\Documents\maya\modules\`).
+2. Delete the `jimboRigging.mod` file.
+3. Restart Maya. 
+4. You can now safely delete the `jimbo-maya-tools` folder from your hard drive.
+
+If you installed via **Method 3 (Manual Installation)**:
+You will need to manually delete the copied `jimboRigging` folder, the shelf `.mel` file, and the icon files from your local Maya preferences.
