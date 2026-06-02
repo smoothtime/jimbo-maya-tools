@@ -37,9 +37,37 @@ class ControlRigUI:
         self.chapter_layout = cmds.columnLayout(adjustableColumn=True)
         
         # ----------------------------------------------------------------------
+        # CHAPTER 0: Rig Structure
+        # ----------------------------------------------------------------------
+        self.step0_frame = cmds.frameLayout(label="Step 0: Rig Structure", collapsable=True, collapse=False, marginWidth=5, marginHeight=5)
+        self.rig_structure_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        cmds.separator(height=10, style='none')
+
+        # bind skeleton selection
+        self.bind_skeleton_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.bind_skeleton_text_field = cmds.textField(placeholderText="Bind skeleton root", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.bind_skeleton_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.bind_skeleton_text_field))
+        cmds.setParent('..')
+        
+        cmds.separator(height=15, style='in')
+        
+        # main structure actions
+        self.structure_action_layout = cmds.formLayout(numberOfDivisions=100)
+        build_structure_btn = cmds.button(label="Build Rig Structure", height=35, command=self.buildRigStructure)
+        
+        cmds.formLayout(self.structure_action_layout, edit=True,
+            attachForm=[(build_structure_btn, 'left', 0), (build_structure_btn, 'top', 0), (build_structure_btn, 'bottom', 0),
+                        (build_structure_btn, 'right', 0)]
+        )
+        cmds.setParent('..')
+        cmds.setParent('..')
+        cmds.setParent('..')
+
+        # ----------------------------------------------------------------------
         # CHAPTER 1: Bind and Bridge
         # ----------------------------------------------------------------------
-        self.step1_frame = cmds.frameLayout(label="Step 1: Bind and Bridge", collapsable=True, collapse=False, marginWidth=5, marginHeight=5)
+        self.step1_frame = cmds.frameLayout(label="Step 1: Bind and Bridge", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
         self.connect_object_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
         cmds.separator(height=10, style='none')
 
@@ -100,6 +128,11 @@ class ControlRigUI:
         self.step2_frame = cmds.frameLayout(label="Step 2: Spine and Hip", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
         self.spine_hip_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
         cmds.separator(height=10, style='none')
+
+        # Analyze Rig Instruction and Button
+        cmds.text(label="Select the 'all_GRP' in Maya and click 'Analyze Rig'\nto auto-populate fields from a standard skeleton.", align="left", font="obliqueLabelFont")
+        cmds.button(label="Analyze Rig", height=30, backgroundColor=(0.3, 0.4, 0.5), command=self.analyzeRig)
+        cmds.separator(height=10, style='in')
 
         # COG Joint
         self.cog_joint_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
@@ -203,6 +236,54 @@ class ControlRigUI:
         cmds.setParent('..')
 
         cmds.showWindow(self.window)
+
+    def analyzeRig(self, *args):
+        selection = cmds.ls(selection=True)
+        if not selection:
+            cmds.warning("Please select the 'all_GRP' node to analyze the rig.")
+            return
+            
+        all_grp = selection[0]
+        if all_grp.split('|')[-1] != "all_GRP":
+            cmds.warning("Selected node is not 'all_GRP'. Please select the 'all_GRP' node.")
+            return
+            
+        descendants = cmds.listRelatives(all_grp, allDescendents=True, fullPath=True) or []
+        
+        cog = None
+        spine_base = None
+        spine_tip = None
+        global_scale = None
+        
+        for node in descendants:
+            short_name = node.split('|')[-1]
+            if short_name == "COG_bridgeJNT" and not cog:
+                cog = node
+            elif short_name == "spine1_bridgeJNT" and not spine_base:
+                spine_base = node
+            elif short_name == "chest_bridgeJNT" and not spine_tip:
+                spine_tip = node
+            elif short_name == "all_CTRL" and not global_scale:
+                global_scale = node
+                
+        populated = []
+        if cog:
+            cmds.textField(self.cog_joint_text_field, edit=True, text=cog)
+            populated.append("COG")
+        if spine_base:
+            cmds.textField(self.spine_base_text_field, edit=True, text=spine_base)
+            populated.append("Spine Base")
+        if spine_tip:
+            cmds.textField(self.spine_tip_text_field, edit=True, text=spine_tip)
+            populated.append("Spine Tip")
+        if global_scale:
+            cmds.textField(self.global_scale_text_field, edit=True, text=global_scale)
+            populated.append("Global Scale")
+            
+        if populated:
+            cmds.inViewMessage(amg='<hl>Rig Analyzed</hl>: Found and populated {}.'.format(", ".join(populated)), pos='midCenter', fade=True)
+        else:
+            cmds.warning("Analyze Rig: Could not find any standard named joints/controls in 'all_GRP'.")
         
     def loadJointHierarchy(self, target_field, *args):
         # grab hierachy from selection
@@ -324,6 +405,96 @@ class ControlRigUI:
         ]
         return cmds.curve(name=name, degree=1, point=pts)
 
+    def buildRigStructure(self, *args):
+        skeleton_root = cmds.textField(self.bind_skeleton_text_field, query=True, text=True)
+        if not skeleton_root:
+            cmds.error("No bind skeleton selected.")
+            return
+            
+        if not cmds.objExists(skeleton_root):
+            cmds.error("Selected skeleton does not exist.")
+            return
+
+        cmds.undoInfo(openChunk=True)
+        try:
+            # Helper to ensure parenting
+            def ensure_parent(child, parent):
+                current = cmds.listRelatives(child, parent=True)
+                if not current or current[0].split('|')[-1] != parent:
+                    cmds.parent(child, parent)
+
+            # Check structure from root downwards
+            if not cmds.objExists("all_GRP"):
+                cmds.group(empty=True, name="all_GRP")
+                    
+            if not cmds.objExists("GEO_GRP"):
+                cmds.group(empty=True, name="GEO_GRP")
+            ensure_parent("GEO_GRP", "all_GRP")
+            
+            if not cmds.objExists("all_CTRL"):
+                cmds.circle(name="all_CTRL", normal=(0, 1, 0), radius=10.0)
+            ensure_parent("all_CTRL", "all_GRP")
+                
+            if not cmds.attributeQuery("globalScale", node="all_CTRL", exists=True):
+                cmds.addAttr("all_CTRL", longName="globalScale", attributeType="float", defaultValue=1.0, keyable=True)
+                
+            # Connect globalScale to all_CTRL's scale so it drives the physical transform
+            for attr in ['scaleX', 'scaleY', 'scaleZ']:
+                # Unlock just in case it was locked by previous runs
+                cmds.setAttr("all_CTRL." + attr, lock=False)
+                if not cmds.isConnected("all_CTRL.globalScale", "all_CTRL." + attr):
+                    cmds.connectAttr("all_CTRL.globalScale", "all_CTRL." + attr, force=True)
+                
+            if not cmds.objExists("offset_CTRL"):
+                cmds.circle(name="offset_CTRL", normal=(0, 1, 0), radius=8.0)
+            ensure_parent("offset_CTRL", "all_CTRL")
+                
+            if not cmds.objExists("JNT_GRP"):
+                cmds.group(empty=True, name="JNT_GRP")
+            ensure_parent("JNT_GRP", "offset_CTRL")
+                
+            if not cmds.objExists("bindJNT_GRP"):
+                cmds.group(empty=True, name="bindJNT_GRP")
+            ensure_parent("bindJNT_GRP", "JNT_GRP")
+                
+            if not cmds.objExists("CTRL_GRP"):
+                cmds.group(empty=True, name="CTRL_GRP")
+            ensure_parent("CTRL_GRP", "offset_CTRL")
+                
+            if not cmds.objExists("settings_CTRL_GRP"):
+                cmds.group(empty=True, name="settings_CTRL_GRP")
+            ensure_parent("settings_CTRL_GRP", "CTRL_GRP")
+            
+            # TODO: the settings control is useless atm. Need to add the bendy control toggle and the render/proxy geometry toggle later if we care
+            if not cmds.objExists("setting_CTRL"):
+                setting_ctrl = cmds.circle(name="setting_CTRL", normal=(0, 1, 0), radius=2.0)[0]
+                cmds.move(15, 0, 0, setting_ctrl)
+                ensure_parent(setting_ctrl, "settings_CTRL_GRP")
+            else:
+                ensure_parent("setting_CTRL", "settings_CTRL_GRP")
+                
+            if not cmds.objExists("MISC_GRP"):
+                cmds.group(empty=True, name="MISC_GRP")
+            ensure_parent("MISC_GRP", "offset_CTRL")
+                
+            # Finally, parent the skeleton to bindJNT_GRP if it's not already
+            ensure_parent(skeleton_root, "bindJNT_GRP")
+            
+            # Lock and hide attributes
+            for ctrl in ["all_CTRL", "offset_CTRL", "setting_CTRL"]:
+                if cmds.objExists(ctrl):
+                    for attr in ['v', 'sx', 'sy', 'sz']:
+                        cmds.setAttr(ctrl + "." + attr, lock=True, keyable=False, channelBox=False)
+                        
+            if cmds.objExists("setting_CTRL"):
+                for attr in ['tx', 'ty', 'tz', 'rx', 'ry', 'rz']:
+                    cmds.setAttr("setting_CTRL." + attr, lock=True, keyable=False, channelBox=False)
+            
+        except Exception as e:
+            cmds.error("Error building rig structure: " + str(e))
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
     def createBridgeHierarchy(self, *args):
         existing_bridge_root = cmds.textField(self.bridge_joint_text_field, query=True, text=True)
         if (existing_bridge_root):
@@ -350,6 +521,17 @@ class ControlRigUI:
         bridge_hierarchy.append(bridge_root)
         final_name = self._renameHierarchy(bridge_hierarchy, "_bindJNT", "_bridgeJNT")
         
+        # move bridge skeleton to bridgeJNT_GRP
+        if not cmds.objExists("bridgeJNT_GRP"):
+            if cmds.objExists("JNT_GRP"):
+                cmds.group(empty=True, name="bridgeJNT_GRP", parent="JNT_GRP")
+            else:
+                cmds.group(empty=True, name="bridgeJNT_GRP")
+                
+        current_parent = cmds.listRelatives(final_name, parent=True)
+        if not current_parent or current_parent[0].split('|')[-1] != "bridgeJNT_GRP":
+            cmds.parent(final_name, "bridgeJNT_GRP")
+
         # update tool UI
         cmds.textField(self.bridge_joint_text_field, edit=True, text=final_name)
 
@@ -736,7 +918,7 @@ class ControlRigUI:
         cmds.connectAttr(curve_info + ".arcLength", ratio_md + ".input1X", force=True)
         cmds.connectAttr(global_length_md + ".outputX", ratio_md + ".input2X", force=True)
         
-        # Drive the first IK joint's scaleX
+        # Drive the first spine IK joint's scaleX
         cmds.connectAttr(ratio_md + ".outputX", spine_IK_base_joint + ".scaleX", force=True)
         
         # ----------------------------------------------------------------------
