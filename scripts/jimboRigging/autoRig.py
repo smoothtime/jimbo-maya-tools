@@ -1,6 +1,9 @@
 import maya.cmds as cmds
 import string
 from functools import partial
+import math
+import maya.api.OpenMaya as om
+import traceback
 
 class ControlRigUI:
     
@@ -177,29 +180,42 @@ class ControlRigUI:
         cmds.setParent('..')
 
         # ----------------------------------------------------------------------
-        # CHAPTER 3: FK Systems
+        # CHAPTER 3: Neck and Head
         # ----------------------------------------------------------------------
-        self.step3_frame = cmds.frameLayout(label="Step 3: FK Systems", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
-        self.fk_system_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        self.step3_frame = cmds.frameLayout(label="Step 3: Neck and Head", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.neck_head_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
         cmds.separator(height=10, style='none')
 
-        # fk system checkboxes
-        self.fk_system_checkboxes = cmds.checkBoxGrp(
-            numberOfCheckBoxes=3, 
-            label='FK Systems: ', 
-            labelArray3=['Spine', 'Legs', 'Arms'],
-            valueArray3=[True, True, True]
-        )
+        # Neck Joint
+        self.neck_joint_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.neck_joint_text_field = cmds.textField(placeholderText="Neck Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.neck_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.neck_joint_text_field))
+        cmds.setParent('..')
+
+        # Head Joint
+        self.head_joint_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.head_joint_text_field = cmds.textField(placeholderText="Head Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.head_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.head_joint_text_field))
+        cmds.setParent('..')
+
+        # Spine Tip Joint (for Neck hookup)
+        self.neck_spine_tip_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.neck_spine_tip_text_field = cmds.textField(placeholderText="Spine Tip Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.neck_spine_tip_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.neck_spine_tip_text_field))
+        cmds.setParent('..')
 
         cmds.separator(height=15, style='in')
         
-        # main fk system actions
-        self.fk_action_layout = cmds.formLayout(numberOfDivisions=100)
-        create_fk_btn = cmds.button(label="Create FK Systems", height=35, command=self.createFKSystems)
+        # main neck/head actions
+        self.neck_head_action_layout = cmds.formLayout(numberOfDivisions=100)
+        build_neck_head_btn = cmds.button(label="Build Neck and Head", height=35, command=self.buildNeckAndHead)
         
-        cmds.formLayout(self.fk_action_layout, edit=True,
-            attachForm=[(create_fk_btn, 'left', 0), (create_fk_btn, 'top', 0), (create_fk_btn, 'bottom', 0),
-                        (create_fk_btn, 'right', 0)]
+        cmds.formLayout(self.neck_head_action_layout, edit=True,
+            attachForm=[(build_neck_head_btn, 'left', 0), (build_neck_head_btn, 'top', 0), (build_neck_head_btn, 'bottom', 0),
+                        (build_neck_head_btn, 'right', 0)]
         )
         cmds.setParent('..')
         cmds.setParent('..')
@@ -207,9 +223,69 @@ class ControlRigUI:
         
 
         # ----------------------------------------------------------------------
-        # CHAPTER 4: Control Objects
+        # CHAPTER 4: Legs
         # ----------------------------------------------------------------------
-        self.step4_frame = cmds.frameLayout(label="Step 4: Control Objects", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.step4_frame = cmds.frameLayout(label="Step 4: Legs", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.legs_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        cmds.separator(height=10, style='none')
+
+        # Analyze Rig Button
+        cmds.button(label="Analyze Rig", height=30, backgroundColor=(0.3, 0.4, 0.5), command=self.analyzeRig)
+        cmds.separator(height=10, style='none')
+
+        # Hip Control
+        self.hip_ctrl_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.hip_ctrl_text_field = cmds.textField(placeholderText="Hip Control (Chacha)", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.hip_ctrl_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.hip_ctrl_text_field))
+        cmds.setParent('..')
+
+        # Left Thigh Joint
+        self.l_thigh_joint_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.l_thigh_joint_text_field = cmds.textField(placeholderText="Left Thigh Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.l_thigh_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.l_thigh_joint_text_field))
+        cmds.setParent('..')
+
+        # Left Ankle Joint
+        self.l_ankle_joint_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.l_ankle_joint_text_field = cmds.textField(placeholderText="Left Ankle Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.l_ankle_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.l_ankle_joint_text_field))
+        cmds.setParent('..')
+
+        # Left Ball Joint
+        self.l_ball_joint_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.l_ball_joint_text_field = cmds.textField(placeholderText="Left Ball Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.l_ball_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.l_ball_joint_text_field))
+        cmds.setParent('..')
+
+        # Left Toe Tip Joint
+        self.l_toe_joint_row = cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.l_toe_joint_text_field = cmds.textField(placeholderText="Left Toe Tip Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.l_toe_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.l_toe_joint_text_field))
+        cmds.setParent('..')
+
+        cmds.separator(height=15, style='in')
+        
+        # main legs actions
+        self.legs_action_layout = cmds.formLayout(numberOfDivisions=100)
+        build_legs_btn = cmds.button(label="Build Legs", height=35, command=self.buildLegs)
+        
+        cmds.formLayout(self.legs_action_layout, edit=True,
+            attachForm=[(build_legs_btn, 'left', 0), (build_legs_btn, 'top', 0), (build_legs_btn, 'bottom', 0),
+                        (build_legs_btn, 'right', 0)]
+        )
+        cmds.setParent('..')
+        cmds.setParent('..')
+        cmds.setParent('..')
+
+        # ----------------------------------------------------------------------
+        # CHAPTER 5: Control Objects
+        # ----------------------------------------------------------------------
+        self.step5_frame = cmds.frameLayout(label="Step 5: Control Objects", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
         self.control_object_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
         cmds.separator(height=10, style='none')
 
@@ -254,6 +330,13 @@ class ControlRigUI:
         spine_base = None
         spine_tip = None
         global_scale = None
+        neck = None
+        head = None
+        l_thigh = None
+        l_ankle = None
+        l_ball = None
+        l_toe = None
+        hip_ctrl = None
         
         for node in descendants:
             short_name = node.split('|')[-1]
@@ -263,8 +346,22 @@ class ControlRigUI:
                 spine_base = node
             elif short_name == "chest_bridgeJNT" and not spine_tip:
                 spine_tip = node
+            elif short_name == "neck_bridgeJNT" and not neck:
+                neck = node
+            elif short_name == "head_bridgeJNT" and not head:
+                head = node
             elif short_name == "all_CTRL" and not global_scale:
                 global_scale = node
+            elif short_name == "L_thigh_bridgeJNT" and not l_thigh:
+                l_thigh = node
+            elif short_name == "L_ankle_bridgeJNT" and not l_ankle:
+                l_ankle = node
+            elif short_name == "L_ball_bridgeJNT" and not l_ball:
+                l_ball = node
+            elif short_name == "L_toeTip_bridgeJNT" and not l_toe:
+                l_toe = node
+            elif short_name == "chacha_CTRL" and not hip_ctrl:
+                hip_ctrl = node
                 
         populated = []
         if cog:
@@ -275,10 +372,32 @@ class ControlRigUI:
             populated.append("Spine Base")
         if spine_tip:
             cmds.textField(self.spine_tip_text_field, edit=True, text=spine_tip)
+            cmds.textField(self.neck_spine_tip_text_field, edit=True, text=spine_tip)
             populated.append("Spine Tip")
+        if neck:
+            cmds.textField(self.neck_joint_text_field, edit=True, text=neck)
+            populated.append("Neck")
+        if head:
+            cmds.textField(self.head_joint_text_field, edit=True, text=head)
+            populated.append("Head")
         if global_scale:
             cmds.textField(self.global_scale_text_field, edit=True, text=global_scale)
             populated.append("Global Scale")
+        if l_thigh:
+            cmds.textField(self.l_thigh_joint_text_field, edit=True, text=l_thigh)
+            populated.append("L Thigh")
+        if l_ankle:
+            cmds.textField(self.l_ankle_joint_text_field, edit=True, text=l_ankle)
+            populated.append("L Ankle")
+        if l_ball:
+            cmds.textField(self.l_ball_joint_text_field, edit=True, text=l_ball)
+            populated.append("L Ball")
+        if l_toe:
+            cmds.textField(self.l_toe_joint_text_field, edit=True, text=l_toe)
+            populated.append("L Toe Tip")
+        if hip_ctrl:
+            cmds.textField(self.hip_ctrl_text_field, edit=True, text=hip_ctrl)
+            populated.append("Hip Control")
             
         if populated:
             cmds.inViewMessage(amg='<hl>Rig Analyzed</hl>: Found and populated {}.'.format(", ".join(populated)), pos='midCenter', fade=True)
@@ -355,6 +474,45 @@ class ControlRigUI:
     def _rotateCVs(self, ctrl, rotation=(0, 0, 0)):
         cmds.rotate(rotation[0], rotation[1], rotation[2], ctrl + '.cv[*]', relative=True, objectSpace=True)
 
+    def _orientCVsUpright(self, ctrl, align_target, aim_axis=(1,0,0)):
+        loc_base = cmds.spaceLocator()[0]
+        loc_aim = cmds.spaceLocator()[0]
+        
+        temp_const1 = cmds.parentConstraint(align_target, loc_base, maintainOffset=False)
+        temp_const2 = cmds.parentConstraint(align_target, loc_aim, maintainOffset=False)
+        cmds.delete(temp_const1)
+        cmds.delete(temp_const2)
+        
+        cmds.parent(loc_aim, align_target)
+        cmds.move(aim_axis[0]*10, aim_axis[1]*10, aim_axis[2]*10, loc_aim, relative=True, objectSpace=True)
+        loc_aim = cmds.parent(loc_aim, world=True)[0]
+        
+        base_pos = cmds.xform(loc_base, query=True, translation=True, worldSpace=True)
+        aim_pos = cmds.xform(loc_aim, query=True, translation=True, worldSpace=True)
+        
+        dist_xz = math.sqrt((aim_pos[0] - base_pos[0])**2 + (aim_pos[2] - base_pos[2])**2)
+        
+        if dist_xz > 0.001:
+            cmds.xform(loc_aim, translation=(aim_pos[0], base_pos[1], aim_pos[2]), worldSpace=True)
+            
+            loc_target = cmds.spaceLocator()[0]
+            temp_const3 = cmds.pointConstraint(loc_base, loc_target, maintainOffset=False)
+            cmds.delete(temp_const3)
+            
+            temp_const4 = cmds.aimConstraint(loc_aim, loc_target, aimVector=aim_axis, upVector=(0,1,0), worldUpType="scene", maintainOffset=False)
+            cmds.delete(temp_const4)
+            
+            # By parenting the upright loc_target to the target joint, we get the corrective rotation needed to straighten the controller
+            loc_target = cmds.parent(loc_target, align_target)[0]
+            corrective_rot = cmds.getAttr(loc_target + ".rotate")[0]
+            
+            self._rotateCVs(ctrl, corrective_rot)
+            cmds.delete(loc_target)
+        else:
+            cmds.warning("Cannot orient CVs upright: target is pointing perfectly vertically.")
+            
+        cmds.delete([loc_base, loc_aim])
+
     def _getPrimaryAxis(self, joint_node):
         # A joint's child translation is essentially a local vector pointing down the bone
         children = cmds.listRelatives(joint_node, children=True, type="joint")
@@ -394,6 +552,22 @@ class ControlRigUI:
             
         # degree 1 creates a linear (straight edge) curve connecting the points
         return cmds.curve(name=name, degree=1, point=pts)
+    def _createDiamondCurve(self, name, radius=1.0):
+        s1 = self._createSquareCurve(name + "_s1", normal=(1,0,0), radius=radius)
+        s2 = self._createSquareCurve(name + "_s2", normal=(0,1,0), radius=radius)
+        s3 = self._createSquareCurve(name + "_s3", normal=(0,0,1), radius=radius)
+        
+        cmds.xform(s1, rotation=(45, 0, 0), objectSpace=True)
+        cmds.xform(s2, rotation=(0, 45, 0), objectSpace=True)
+        cmds.xform(s3, rotation=(0, 0, 45), objectSpace=True)
+        
+        cmds.makeIdentity([s1, s2, s3], apply=True, t=1, r=1, s=1, n=0)
+        
+        shapes = cmds.listRelatives([s2, s3], shapes=True)
+        cmds.parent(shapes, s1, shape=True, relative=True)
+        cmds.delete(s2, s3)
+        
+        return cmds.rename(s1, name)
 
     def _createCubeCurve(self, name, radius=1.0):
         r = radius
@@ -403,6 +577,34 @@ class ControlRigUI:
             (r, -r, r), (r, -r, -r), (-r, -r, -r), (-r, -r, r), (r, -r, r),     # Bottom face
             (-r, -r, r), (-r, r, r), (-r, r, -r), (-r, -r, -r), (r, -r, -r), (r, r, -r) # Connecting pillars
         ]
+        return cmds.curve(name=name, degree=1, point=pts)
+
+    def _createPlusCurve(self, name, normal=(0, 1, 0), radius=1.0):
+        r = radius
+        t = radius * 0.333
+        
+        if normal == (1, 0, 0) or normal == (-1, 0, 0):
+            pts = [
+                (0, -r, -t), (0, -t, -t), (0, -t, -r), (0, t, -r),
+                (0, t, -t), (0, r, -t), (0, r, t), (0, t, t),
+                (0, t, r), (0, -t, r), (0, -t, t), (0, -r, t),
+                (0, -r, -t)
+            ]
+        elif normal == (0, 0, 1) or normal == (0, 0, -1):
+            pts = [
+                (-t, -r, 0), (-t, -t, 0), (-r, -t, 0), (-r, t, 0),
+                (-t, t, 0), (-t, r, 0), (t, r, 0), (t, t, 0),
+                (r, t, 0), (r, -t, 0), (t, -t, 0), (t, -r, 0),
+                (-t, -r, 0)
+            ]
+        else: # Default Y normal
+            pts = [
+                (-t, 0, -r), (-t, 0, -t), (-r, 0, -t), (-r, 0, t),
+                (-t, 0, t), (-t, 0, r), (t, 0, r), (t, 0, t),
+                (r, 0, t), (r, 0, -t), (t, 0, -t), (t, 0, -r),
+                (-t, 0, -r)
+            ]
+            
         return cmds.curve(name=name, degree=1, point=pts)
 
     def buildRigStructure(self, *args):
@@ -432,7 +634,7 @@ class ControlRigUI:
             ensure_parent("GEO_GRP", "all_GRP")
             
             if not cmds.objExists("all_CTRL"):
-                cmds.circle(name="all_CTRL", normal=(0, 1, 0), radius=10.0)
+                cmds.circle(constructionHistory=False, name="all_CTRL", normal=(0, 1, 0), radius=10.0)
             ensure_parent("all_CTRL", "all_GRP")
                 
             if not cmds.attributeQuery("globalScale", node="all_CTRL", exists=True):
@@ -446,7 +648,7 @@ class ControlRigUI:
                     cmds.connectAttr("all_CTRL.globalScale", "all_CTRL." + attr, force=True)
                 
             if not cmds.objExists("offset_CTRL"):
-                cmds.circle(name="offset_CTRL", normal=(0, 1, 0), radius=8.0)
+                cmds.circle(constructionHistory=False, name="offset_CTRL", normal=(0, 1, 0), radius=8.0)
             ensure_parent("offset_CTRL", "all_CTRL")
                 
             if not cmds.objExists("JNT_GRP"):
@@ -467,7 +669,7 @@ class ControlRigUI:
             
             # TODO: the settings control is useless atm. Need to add the bendy control toggle and the render/proxy geometry toggle later if we care
             if not cmds.objExists("setting_CTRL"):
-                setting_ctrl = cmds.circle(name="setting_CTRL", normal=(0, 1, 0), radius=2.0)[0]
+                setting_ctrl = cmds.circle(constructionHistory=False, name="setting_CTRL", normal=(0, 1, 0), radius=2.0)[0]
                 cmds.move(15, 0, 0, setting_ctrl)
                 ensure_parent(setting_ctrl, "settings_CTRL_GRP")
             else:
@@ -491,7 +693,8 @@ class ControlRigUI:
                     cmds.setAttr("setting_CTRL." + attr, lock=True, keyable=False, channelBox=False)
             
         except Exception as e:
-            cmds.error("Error building rig structure: " + str(e))
+            full_traceback = traceback.format_exc()
+            cmds.error(f"Error building rig structure: {e}\n\nFull Traceback:\n{full_traceback}")
         finally:
             cmds.undoInfo(closeChunk=True)
 
@@ -768,7 +971,7 @@ class ControlRigUI:
 
         # Spine Tip Controller
         tip_normal, tip_length = self._getPrimaryAxis(spine_ik_tip)
-        spine_tip_ctrl = cmds.circle(name="spineTip_CTRL", normal=tip_normal, radius=(tip_length * 2.0))[0]
+        spine_tip_ctrl = cmds.circle(constructionHistory=False, name="spineTip_CTRL", normal=tip_normal, radius=(tip_length * 2.0))[0]
         self._groupOverAlign(spine_tip_ctrl, spine_tip_ctrl_jnt)
         cmds.parentConstraint(spine_tip_ctrl, spine_tip_ctrl_jnt, maintainOffset=False)
 
@@ -790,7 +993,7 @@ class ControlRigUI:
         base_normal, base_length = self._getPrimaryAxis(spine_IK_base_joint)
         cog_normal, cog_length = self._getPrimaryAxis(cog_joint)
         
-        chacha_ctrl = cmds.circle(name="chacha_CTRL", normal=base_normal, radius=(cog_length * 2.0))[0]
+        chacha_ctrl = cmds.circle(constructionHistory=False, name="chacha_CTRL", normal=base_normal, radius=(cog_length * 2.0))[0]
         self._groupOverAlign(chacha_ctrl, spine_base_ctrl_jnt)
         
         # Move CVs "down" the object space primary axis by the COG bone length
@@ -834,6 +1037,7 @@ class ControlRigUI:
         base_pos = cmds.xform(spine_IK_base_joint, query=True, translation=True, worldSpace=True)
         tip_pos = cmds.xform(spine_ik_tip, query=True, translation=True, worldSpace=True)
         
+        # TODO consider finding a place in the IK chain that is about halfway along its length. Also maybe have >1 FK joints for long enough spines
         # Find the midpoint of the second IK bone by averaging world pos of 2nd and 3rd joints
         forward_ik = spine_IK_hierarchy[::-1]
         pos2 = cmds.xform(forward_ik[1], query=True, translation=True, worldSpace=True)
@@ -872,7 +1076,7 @@ class ControlRigUI:
         cmds.parent(fk_mid_jnt, fk_base_jnt)
         
         # Create the Mid FK controller and constrain the Mid FK joint to it
-        fk_mid_ctrl = cmds.circle(name="spineMid_FK_CTRL", normal=(1, 0, 0), radius=(base_length * 2.0))[0]
+        fk_mid_ctrl = cmds.circle(constructionHistory=False, name="spineMid_FK_CTRL", normal=(1, 0, 0), radius=(base_length * 2.0))[0]
         self._groupOverAlign(fk_mid_ctrl, fk_mid_jnt)
         cmds.parentConstraint(fk_mid_ctrl, fk_mid_jnt, maintainOffset=True)
         
@@ -957,11 +1161,558 @@ class ControlRigUI:
         if master_misc_grp:
             cmds.parent(spine_misc_grp, master_misc_grp[0])
             
+        # Auto-populate Step 4's Hip Control if it exists
+        if cmds.objExists(chacha_ctrl):
+            cmds.textField(self.hip_ctrl_text_field, edit=True, text=chacha_ctrl)
+            
         cmds.select(clear=True)
     
-    def createFKSystems(self, *args):
-        pass
+    def buildNeckAndHead(self, *args):
+        neck_joint = cmds.textField(self.neck_joint_text_field, query=True, text=True)
+        if not neck_joint:
+            cmds.error("No neck joint specified")
+            return
+            
+        head_joint = cmds.textField(self.head_joint_text_field, query=True, text=True)
+        if not head_joint:
+            cmds.error("No head joint specified")
+            return
+            
+        spine_tip_joint = cmds.textField(self.neck_spine_tip_text_field, query=True, text=True)
+        if not spine_tip_joint:
+            cmds.error("No spine tip joint specified")
+            return
+
+        cmds.undoInfo(openChunk=True)
+        try:
+            neck_joint = cmds.ls(neck_joint, long=True)[0]
+            head_joint = cmds.ls(head_joint, long=True)[0]
+            spine_tip_joint = cmds.ls(spine_tip_joint, long=True)[0]
+
+            # Find the path from neck to head
+            neck_chain = [neck_joint]
+            current_joint = head_joint
+            head_parents = []
+            while current_joint and current_joint != neck_joint:
+                parent = cmds.listRelatives(current_joint, parent=True, fullPath=True)
+                if not parent:
+                    break
+                current_joint = parent[0]
+                if current_joint != neck_joint:
+                    head_parents.append(current_joint)
+                    
+            head_parents.reverse()
+            neck_chain.extend(head_parents)
+
+            neck_ctrls = []
+            
+            # Build Neck Controls
+            previous_ctrl = None
+            last_neck_joint = neck_chain[-1]
+            
+            for jnt in neck_chain:
+                short_name = jnt.split('|')[-1]
+                ctrl_name = short_name.replace("_bridgeJNT", "_CTRL")
+                if "_CTRL" not in ctrl_name:
+                    ctrl_name += "_CTRL"
+                    
+                normal, length = self._getPrimaryAxis(jnt)
+                ctrl = cmds.circle(constructionHistory=False, name=ctrl_name, normal=normal, radius=(length * 1.5))[0]
+                neck_ctrls.append(ctrl)
+                
+                zero_grp, sdk_grp = self._groupOverAlign(ctrl, jnt)
+                cmds.parentConstraint(ctrl, jnt, maintainOffset=False)
+                
+                if previous_ctrl:
+                    cmds.parent(zero_grp, previous_ctrl)
+                
+                previous_ctrl = ctrl
+                
+            # Build Head Control
+            head_short_name = head_joint.split('|')[-1]
+            head_ctrl_name = head_short_name.replace("_bridgeJNT", "_CTRL")
+            if "_CTRL" not in head_ctrl_name:
+                head_ctrl_name += "_CTRL"
+                
+            head_normal, head_length = self._getPrimaryAxis(head_joint)
+            head_ctrl = cmds.circle(constructionHistory=False, name=head_ctrl_name, normal=head_normal, radius=(head_length * 0.5))[0]
+            
+            head_zero_grp, head_sdk_grp = self._groupOverAlign(head_ctrl, head_joint)
+            cmds.parentConstraint(head_ctrl, head_joint, maintainOffset=False)
+
+            # push head control up to be more halo-like
+            move_length = head_length * 0.75
+            cmds.move(head_normal[0] * move_length, head_normal[1] * move_length, head_normal[2] * move_length, head_ctrl + '.cv[*]', relative=True, objectSpace=True)
+            
+            # Space Switching Setup for Head
+            head_locator = cmds.spaceLocator(name=head_ctrl_name + "_spaceLOC")[0]
+            
+            # Snap locator to head joint
+            temp_const = cmds.parentConstraint(head_joint, head_locator, maintainOffset=False)
+            cmds.delete(temp_const)
+            
+            # Parent locator to last neck ctrl
+            cmds.parent(head_locator, previous_ctrl)
+            
+            # Constrain head zero group to locator
+            cmds.pointConstraint(head_locator, head_zero_grp, maintainOffset=False)
+            orient_const = cmds.orientConstraint(head_locator, head_zero_grp, maintainOffset=False)[0]
+            
+            # Add custom attribute for space switching
+            cmds.addAttr(head_ctrl, longName="orient", attributeType="enum", enumName="<none>:Neck", keyable=True)
+            
+            # Connect the orient attribute to the orient constraint weight
+            cmds.connectAttr(head_ctrl + ".orient", orient_const + "." + head_locator.split('|')[-1] + "W0", force=True)
+            
+            # Default to Neck orientation
+            cmds.setAttr(head_ctrl + ".orient", 1)
+
+            # Connect scale of head ctrl to head joint
+            cmds.connectAttr(head_ctrl + ".scaleX", head_joint + ".scaleX", force=True)
+            cmds.connectAttr(head_ctrl + ".scaleY", head_joint + ".scaleY", force=True)
+            cmds.connectAttr(head_ctrl + ".scaleZ", head_joint + ".scaleZ", force=True)
+            
+            # Space Switching Setup for Base Neck
+            base_neck_ctrl = neck_ctrls[0]
+            base_neck_zero_grp = base_neck_ctrl + "_0"
+            
+            neck_locator = cmds.spaceLocator(name=base_neck_ctrl + "_spaceLOC")[0]
+            
+            # Snap locator to base neck joint
+            temp_const = cmds.parentConstraint(neck_joint, neck_locator, maintainOffset=False)
+            cmds.delete(temp_const)
+            
+            # Parent locator to spine tip ctrl
+            if cmds.objExists("spineTip_CTRL"):
+                cmds.parent(neck_locator, "spineTip_CTRL")
+            else:
+                cmds.warning("spineTip_CTRL does not exist. Space switching locator left unparented.")
+            
+            # Constrain base neck zero group to locator
+            cmds.pointConstraint(neck_locator, base_neck_zero_grp, maintainOffset=False)
+            orient_const_neck = cmds.orientConstraint(neck_locator, base_neck_zero_grp, maintainOffset=False)[0]
+            
+            # Add custom attribute for space switching
+            cmds.addAttr(base_neck_ctrl, longName="orient", attributeType="enum", enumName="<none>:Chest", keyable=True)
+            
+            # Connect the orient attribute to the orient constraint weight
+            cmds.connectAttr(base_neck_ctrl + ".orient", orient_const_neck + "." + neck_locator.split('|')[-1] + "W0", force=True)
+            
+            # Default to Chest orientation
+            cmds.setAttr(base_neck_ctrl + ".orient", 1)
+
+            
+            # Lock and hide scaling/visibility on neck controls
+            for c in neck_ctrls:
+                if cmds.objExists(c):
+                    for attr in ['sx', 'sy', 'sz', 'v']:
+                        cmds.setAttr(c + "." + attr, lock=True, keyable=False, channelBox=False)
+            
+            # Lock and hide visiblity on head control
+            cmds.setAttr(head_ctrl + ".v", lock=True, keyable=False, channelBox=False)
+            
+            # Grouping and Organization
+            neck_ctrl_grp = cmds.group(empty=True, name="neck_CTRL_GRP")
+            head_ctrl_grp = cmds.group(empty=True, name="head_CTRL_GRP")
+            
+            cmds.parent(base_neck_zero_grp, neck_ctrl_grp)
+            cmds.parent(head_zero_grp, head_ctrl_grp)
+            
+            master_ctrl_grp = cmds.ls("CTRL_GRP")
+            if master_ctrl_grp:
+                cmds.parent(neck_ctrl_grp, master_ctrl_grp[0])
+                cmds.parent(head_ctrl_grp, master_ctrl_grp[0])
+                        
+        except Exception as e:
+            full_traceback = traceback.format_exc()
+            cmds.error(f"Error building neck and head: {e}\n\nFull Traceback:\n{full_traceback}")
+        finally:
+            cmds.undoInfo(closeChunk=True)
     
+    def _parentConstraintAndScale(self, driver, driven):
+        cmds.parentConstraint(driver, driven, maintainOffset=True)
+        for attr in ['scaleX', 'scaleY', 'scaleZ']:
+            cmds.connectAttr(driver + "." + attr, driven + "." + attr, force=True)
+
+
+
+    def _setupLengthSDK(self, driver_ctrl, driven_sdk, snap_target):
+        # Calculate the local translation needed to be at snap_target
+        # We use a temporary locator parented under the SDK group's parent 
+        # so it lives in the exact same local space as the SDK group.
+        parent_grp = cmds.listRelatives(driven_sdk, parent=True)[0]
+        temp_loc = cmds.spaceLocator()[0]
+        cmds.parent(temp_loc, parent_grp)
+        
+        # Snap the locator to the target to get the required local translation
+        temp_const = cmds.pointConstraint(snap_target, temp_loc, maintainOffset=False)
+        cmds.delete(temp_const)
+        
+        local_tx = cmds.getAttr(temp_loc + ".tx")
+        local_ty = cmds.getAttr(temp_loc + ".ty")
+        local_tz = cmds.getAttr(temp_loc + ".tz")
+        cmds.delete(temp_loc)
+        
+        # Key Length = 0 (snapped to parent joint)
+        cmds.setDrivenKeyframe(driven_sdk + ".tx", currentDriver=driver_ctrl + ".length", driverValue=0, value=local_tx)
+        cmds.setDrivenKeyframe(driven_sdk + ".ty", currentDriver=driver_ctrl + ".length", driverValue=0, value=local_ty)
+        cmds.setDrivenKeyframe(driven_sdk + ".tz", currentDriver=driver_ctrl + ".length", driverValue=0, value=local_tz)
+        
+        # Key Length = 1 (current default position, which is 0,0,0 local)
+        cmds.setDrivenKeyframe(driven_sdk + ".tx", currentDriver=driver_ctrl + ".length", driverValue=1, value=0)
+        cmds.setDrivenKeyframe(driven_sdk + ".ty", currentDriver=driver_ctrl + ".length", driverValue=1, value=0)
+        cmds.setDrivenKeyframe(driven_sdk + ".tz", currentDriver=driver_ctrl + ".length", driverValue=1, value=0)
+        
+        # Set animation curves to Cycle with Offset
+        cmds.setInfinity(driven_sdk, attribute=["tx", "ty", "tz"], preInfinite="cycleRelative", postInfinite="cycleRelative")
+        
+        # Restore default length to visually confirm
+        cmds.setAttr(driver_ctrl + ".length", 1)
+
+    def buildLegs(self, *args):
+        hip_ctrl = cmds.textField(self.hip_ctrl_text_field, query=True, text=True)
+        l_thigh_joint = cmds.textField(self.l_thigh_joint_text_field, query=True, text=True)
+        l_ankle_joint = cmds.textField(self.l_ankle_joint_text_field, query=True, text=True)
+        l_ball_joint = cmds.textField(self.l_ball_joint_text_field, query=True, text=True)
+        l_toe_joint = cmds.textField(self.l_toe_joint_text_field, query=True, text=True)
+        
+        if not (l_thigh_joint and l_ankle_joint and l_ball_joint and l_toe_joint and hip_ctrl):
+            cmds.error("Please specify Hip Control, Left Thigh, Ankle, Ball, and Toe Tip joints.")
+            return
+            
+        cmds.undoInfo(openChunk=True)
+        try:
+            # Resolve to full paths
+            l_thigh_joint = cmds.ls(l_thigh_joint, long=True)[0]
+            l_ankle_joint = cmds.ls(l_ankle_joint, long=True)[0]
+            l_ball_joint = cmds.ls(l_ball_joint, long=True)[0]
+            l_toe_joint = cmds.ls(l_toe_joint, long=True)[0]
+            
+            # 1. Duplicate and unparent
+            dupe_joints = cmds.duplicate(l_thigh_joint)
+            if not dupe_joints:
+                cmds.error("Failed to duplicate left thigh hierarchy.")
+                return
+            main_l_thigh = dupe_joints[0]
+            if cmds.listRelatives(main_l_thigh, parent=True):
+                main_l_thigh = cmds.parent(main_l_thigh, world=True)[0]
+                
+            # Rename _bridgeJNT to Main_JNT
+            main_hierarchy = cmds.listRelatives(main_l_thigh, allDescendents=True, fullPath=True) or []
+            main_hierarchy.append(main_l_thigh)
+            main_l_thigh = self._renameHierarchy(main_hierarchy, "_bridgeJNT", "Main_JNT")
+            
+            # Use short names for ease after this point
+            main_thigh_short = l_thigh_joint.split('|')[-1].replace("_bridgeJNT", "Main_JNT")
+            main_ankle_short = l_ankle_joint.split('|')[-1].replace("_bridgeJNT", "Main_JNT")
+            main_ball_short = l_ball_joint.split('|')[-1].replace("_bridgeJNT", "Main_JNT")
+            main_toe_short = l_toe_joint.split('|')[-1].replace("_bridgeJNT", "Main_JNT")
+            
+            # Get path from ankle to thigh
+            curr = main_ankle_short
+            path_to_thigh = [curr]
+            safe_count = 0
+            while curr != main_thigh_short and safe_count < 100:
+                parent = cmds.listRelatives(curr, parent=True)
+                if not parent:
+                    cmds.error("Ankle is not a descendant of Thigh")
+                    return
+                curr = parent[0].split('|')[-1]
+                path_to_thigh.append(curr)
+                safe_count += 1
+                
+            path_to_thigh.reverse() # [thigh, midThigh, knee, midKnee, ankle]
+            
+            if len(path_to_thigh) != 5:
+                cmds.warning("Expected exactly 5 joints from Thigh to Ankle. Found {} joints.".format(len(path_to_thigh)))
+                
+            main_thigh = path_to_thigh[0]
+            main_mid_thigh = path_to_thigh[1]
+            main_knee = path_to_thigh[2]
+            main_mid_knee = path_to_thigh[3]
+            main_ankle = path_to_thigh[4]
+            
+            # Reorganize Main chain
+            cmds.parent(main_knee, main_thigh)
+            cmds.parent(main_ankle, main_knee)
+            
+            # Array of joints NOT including mid joints
+            main_joints_no_mid = [main_thigh, main_knee, main_ankle]
+            # Joints past the ankle will be in a weird order but atm this doesn't matter
+            ankle_descendants = cmds.listRelatives(main_ankle, allDescendents=True, type="joint") or []
+            for desc in ankle_descendants:
+                main_joints_no_mid.append(desc.split('|')[-1])
+                
+            # Point constrain mid joints
+            cmds.pointConstraint(main_thigh, main_knee, main_mid_thigh, maintainOffset=False)
+            cmds.pointConstraint(main_knee, main_ankle, main_mid_knee, maintainOffset=False)
+            
+            # Parent constrain & scale bridge joints to main joints
+            for jnt in main_joints_no_mid:
+                bridge_jnt = jnt.replace("Main_JNT", "_bridgeJNT")
+                if cmds.objExists(bridge_jnt):
+                    self._parentConstraintAndScale(jnt, bridge_jnt)
+                    
+            # Create FK chain
+            fk_dupes = cmds.duplicate(main_thigh)
+            fk_thigh = fk_dupes[0]
+            
+            fk_hierarchy = cmds.listRelatives(fk_thigh, allDescendents=True, fullPath=True) or []
+            fk_hierarchy.append(fk_thigh)
+            fk_thigh = self._renameHierarchy(fk_hierarchy, "Main_JNT", "FK_JNT")
+            
+            # Delete mid joints from FK chain
+            fk_mid_thigh = main_mid_thigh.replace("Main_JNT", "FK_JNT")
+            fk_mid_knee = main_mid_knee.replace("Main_JNT", "FK_JNT")
+            if cmds.objExists(fk_mid_thigh):
+                cmds.delete(fk_mid_thigh)
+            if cmds.objExists(fk_mid_knee):
+                cmds.delete(fk_mid_knee)
+                
+            # Create IK chain
+            ik_dupes = cmds.duplicate(fk_thigh)
+            ik_thigh = ik_dupes[0]
+            
+            ik_hierarchy = cmds.listRelatives(ik_thigh, allDescendents=True, fullPath=True) or []
+            ik_hierarchy.append(ik_thigh)
+            ik_thigh = self._renameHierarchy(ik_hierarchy, "FK_JNT", "IK_JNT")
+            
+            # Parent constrain Main to FK and IK
+            thigh_constraint = None
+            fk_thigh_short = None
+            ik_thigh_short = None
+            
+            for main_jnt in main_joints_no_mid:
+                fk_jnt = main_jnt.replace("Main_JNT", "FK_JNT")
+                ik_jnt = main_jnt.replace("Main_JNT", "IK_JNT")
+                
+                if cmds.objExists(fk_jnt) and cmds.objExists(ik_jnt):
+                    constraint = cmds.parentConstraint(fk_jnt, ik_jnt, main_jnt, maintainOffset=False)[0]
+                    
+                    fk_short = fk_jnt.split('|')[-1]
+                    ik_short = ik_jnt.split('|')[-1]
+                    
+                    if not thigh_constraint:
+                        thigh_constraint = constraint
+                        fk_thigh_short = fk_short
+                        ik_thigh_short = ik_short
+                    else:
+                        fk_src = "{}.{}W0".format(thigh_constraint, fk_thigh_short)
+                        ik_src = "{}.{}W1".format(thigh_constraint, ik_thigh_short)
+                        
+                        fk_dst = "{}.{}W0".format(constraint, fk_short)
+                        ik_dst = "{}.{}W1".format(constraint, ik_short)
+                        
+                        cmds.connectAttr(fk_src, fk_dst, force=True)
+                        cmds.connectAttr(ik_src, ik_dst, force=True)
+
+            l_ankle_normal, l_ankle_length = self._getPrimaryAxis(main_ankle)                    
+            l_legFKIK_ctrl = self._createPlusCurve("L_LegFKIK_CTRL", (1,0,0))
+            self._groupOverAlign(l_legFKIK_ctrl, main_ankle)
+            cmds.move(-0.5 * l_ankle_length, 0, 0, l_legFKIK_ctrl + '.cv[*]', relative=True, objectSpace=True)
+            self._orientCVsUpright(l_legFKIK_ctrl, main_ankle, aim_axis=(1,0,0))
+            if not cmds.attributeQuery("FKIK", node=l_legFKIK_ctrl, exists=True):
+                cmds.addAttr(l_legFKIK_ctrl, longName="FKIK", niceName= "FK/IK", attributeType="float", minValue=0, maxValue=1, defaultValue=1.0, keyable=True)
+                
+            # Connect FKIK switch to thigh parent constraint
+            if thigh_constraint and ik_thigh_short and fk_thigh_short:
+                ik_weight_attr = "{}.{}W1".format(thigh_constraint, ik_thigh_short)
+                fk_weight_attr = "{}.{}W0".format(thigh_constraint, fk_thigh_short)
+                
+                # 1. Connect IK weight directly (0 = FK, 1 = IK)
+                cmds.connectAttr(l_legFKIK_ctrl + ".FKIK", ik_weight_attr, force=True)
+                
+                # 2. Create a reverse node for the FK weight
+                l_leg_rev_node = cmds.createNode("reverse", name=l_legFKIK_ctrl + "_FK_REV")
+                
+                # 3. Connect FKIK attr into the reverse node's inputX
+                cmds.connectAttr(l_legFKIK_ctrl + ".FKIK", l_leg_rev_node + ".inputX", force=True)
+                
+                # 4. Connect the reverse node's outputX into the FK weight
+                cmds.connectAttr(l_leg_rev_node + ".outputX", fk_weight_attr, force=True)
+            else:
+                cmds.error("Unable to connect FK/IK switch to thigh parent constraint")
+                return
+
+            # Create groups for the leg controls
+            l_legFK_CTRL_GRP = cmds.group(empty=True, name="L_legFK_CTRL_GRP", world=True)
+            l_legIK_CTRL_GRP = cmds.group(empty=True, name="L_legIK_CTRL_GRP", world=True)
+
+            cmds.connectAttr(l_leg_rev_node + ".outputX", l_legFK_CTRL_GRP + ".visibility", force=True)
+            cmds.connectAttr(l_legFKIK_ctrl + ".FKIK", l_legIK_CTRL_GRP + ".visibility", force=True)
+
+            # Create FK controls
+            fk_thigh_jnt = main_thigh.replace("Main_JNT", "FK_JNT")
+            fk_knee_jnt = main_knee.replace("Main_JNT", "FK_JNT")
+            fk_ankle_jnt = main_ankle.replace("Main_JNT", "FK_JNT")
+            fk_ball_jnt = main_ball_short.replace("Main_JNT", "FK_JNT")
+            
+            # Thigh FK
+            thigh_normal, thigh_length = self._getPrimaryAxis(fk_thigh_jnt)
+            thigh_length = thigh_length if thigh_length > 0.1 else 2.0
+            l_thigh_fk_ctrl = cmds.circle(constructionHistory=False, name="L_thighFK_CTRL", normal=thigh_normal, radius=(thigh_length * 0.25))[0]
+            l_thigh_fk_zero, _ = self._groupOverAlign(l_thigh_fk_ctrl, fk_thigh_jnt)
+            
+            # Move thigh controller slightly down thigh to not intersect groin
+            thigh_children = cmds.listRelatives(fk_thigh_jnt, children=True, type="joint")
+            if thigh_children:
+                tx = cmds.getAttr(thigh_children[0] + ".translateX")
+                ty = cmds.getAttr(thigh_children[0] + ".translateY")
+                tz = cmds.getAttr(thigh_children[0] + ".translateZ")
+                cmds.move(tx * 0.25, ty * 0.25, tz * 0.25, l_thigh_fk_ctrl + '.cv[*]', relative=True, objectSpace=True)
+            cmds.parentConstraint(l_thigh_fk_ctrl, fk_thigh_jnt, maintainOffset=False)
+            cmds.addAttr(l_thigh_fk_ctrl, longName="length", attributeType="float", defaultValue=1, keyable=True)
+            
+            # Knee FK
+            knee_normal, knee_length = self._getPrimaryAxis(fk_knee_jnt)
+            knee_length = knee_length if knee_length > 0.1 else 2.0
+            l_knee_fk_ctrl = cmds.circle(constructionHistory=False, name="L_kneeFK_CTRL", normal=knee_normal, radius=(knee_length * 0.25))[0]
+            l_knee_fk_zero, l_knee_fk_sdk = self._groupOverAlign(l_knee_fk_ctrl, fk_knee_jnt)
+            cmds.parentConstraint(l_knee_fk_ctrl, fk_knee_jnt, maintainOffset=False)
+            cmds.addAttr(l_knee_fk_ctrl, longName="length", attributeType="float", defaultValue=1, keyable=True)
+            
+            # Ankle FK
+            ankle_normal, ankle_length = self._getPrimaryAxis(fk_ankle_jnt)
+            ankle_length = ankle_length if ankle_length > 0.1 else 2.0
+            l_ankle_fk_ctrl = cmds.circle(constructionHistory=False, name="L_ankleFK_CTRL", normal=ankle_normal, radius=(ankle_length * 0.5))[0]
+            l_ankle_fk_zero, l_ankle_fk_sdk = self._groupOverAlign(l_ankle_fk_ctrl, fk_ankle_jnt)
+            cmds.parentConstraint(l_ankle_fk_ctrl, fk_ankle_jnt, maintainOffset=False)
+            
+            # Ball FK
+            ball_normal, ball_length = self._getPrimaryAxis(fk_ball_jnt)
+            ball_length = ball_length if ball_length > 0.1 else 2.0
+            l_ball_fk_ctrl = cmds.circle(constructionHistory=False, name="L_ballFK_CTRL", normal=ball_normal, radius=(ball_length * 0.75))[0]
+            l_ball_fk_zero, _ = self._groupOverAlign(l_ball_fk_ctrl, fk_ball_jnt)
+            cmds.parentConstraint(l_ball_fk_ctrl, fk_ball_jnt, maintainOffset=False)
+            
+            # Parent FK chain
+            cmds.parent(l_ball_fk_zero, l_ankle_fk_ctrl)
+            cmds.parent(l_ankle_fk_zero, l_knee_fk_ctrl)
+            cmds.parent(l_knee_fk_zero, l_thigh_fk_ctrl)
+            cmds.parent(l_thigh_fk_zero, l_legFK_CTRL_GRP)
+
+            # Set up SDK for length of thigh and knee
+            self._setupLengthSDK(l_thigh_fk_ctrl, l_knee_fk_sdk, fk_thigh_jnt)
+            self._setupLengthSDK(l_knee_fk_ctrl, l_ankle_fk_sdk, fk_knee_jnt)
+
+            # Space switching for thigh
+            l_thigh_locator = cmds.spaceLocator(name="L_thighFK_CTRL_LOC")[0]
+            # Snap locator to thigh main joint
+            temp_const = cmds.parentConstraint(main_thigh, l_thigh_locator, maintainOffset=False)
+            cmds.delete(temp_const)
+
+            # Parent locator to hip control
+            cmds.parent(l_thigh_locator, hip_ctrl)
+
+            # Constrain thigh zero group to locator
+            cmds.pointConstraint(l_thigh_locator, l_thigh_fk_zero, maintainOffset=False)
+            l_thigh_orient_constraint = cmds.orientConstraint(l_thigh_locator, l_thigh_fk_zero, maintainOffset=False)[0]
+
+            # Add custom attribute for space switching
+            cmds.addAttr(l_thigh_fk_ctrl, longName="orient", attributeType="enum", enumName="<none>:Hips", keyable=True)
+
+            # Connect the orient attribute to the orient constraint weight
+            cmds.connectAttr(l_thigh_fk_ctrl + ".orient", l_thigh_orient_constraint + "." + l_thigh_locator.split('|')[-1] + "W0", force=True)
+
+            # Default to Hip Orientation
+            cmds.setAttr(l_thigh_fk_ctrl + ".orient", 1)
+
+            # ------------------------------------------------------------------
+            # IK Chain Setup
+            # ------------------------------------------------------------------
+            ik_ankle_jnt = main_ankle_short.replace("Main_JNT", "IK_JNT")
+            ik_ball_jnt = main_ball_short.replace("Main_JNT", "IK_JNT")
+            ik_toe_jnt = main_toe_short.replace("Main_JNT", "IK_JNT")
+            
+            # Thigh to Ankle (Rotate Plane Solver)
+            l_foot_ikh, l_foot_eff = cmds.ikHandle(startJoint=ik_thigh, endEffector=ik_ankle_jnt, solver="ikRPsolver", sticky="sticky", name="L_foot_IKH")
+            cmds.rename(l_foot_eff, "L_foot_EFF")
+            
+            # Ankle to Ball (Single Chain Solver)
+            l_ball_ikh, l_ball_eff = cmds.ikHandle(startJoint=ik_ankle_jnt, endEffector=ik_ball_jnt, solver="ikSCsolver", sticky="sticky", name="L_ball_IKH")
+            cmds.rename(l_ball_eff, "L_ball_EFF")
+            
+            # Ball to Toe (Single Chain Solver)
+            l_toe_ikh, l_toe_eff = cmds.ikHandle(startJoint=ik_ball_jnt, endEffector=ik_toe_jnt, solver="ikSCsolver", sticky="sticky", name="L_toe_IKH")
+            cmds.rename(l_toe_eff, "L_toe_EFF")
+
+            # ------------------------------------------------------------------
+            # IK Controls
+            # ------------------------------------------------------------------
+            # Foot IK Control
+            _, ankle_length = self._getPrimaryAxis(ik_ankle_jnt)
+            ankle_length = ankle_length if ankle_length > 0.1 else 2.0
+            l_foot_ik_ctrl = cmds.circle(constructionHistory=False, name="L_footIK_CTRL", normal=(0,1,0), sections=12, radius=(ankle_length * 1.5))[0]
+            l_foot_ik_sdk = cmds.group(l_foot_ik_ctrl, name=l_foot_ik_ctrl + "_SDK")
+            l_foot_ik_zero = cmds.group(l_foot_ik_sdk, name=l_foot_ik_ctrl + "_0")
+            
+            # Snap position to ankle
+            temp_const = cmds.pointConstraint(ik_ankle_jnt, l_foot_ik_zero, maintainOffset=False)
+            cmds.delete(temp_const)
+            # Capture the XZ heading using the vector from ankle to ball
+            ankle_pos = cmds.xform(ik_ankle_jnt, query=True, translation=True, worldSpace=True)
+            ball_pos = cmds.xform(ik_ball_jnt, query=True, translation=True, worldSpace=True)
+            
+            # Project vector onto XZ plane
+            dx = ball_pos[0] - ankle_pos[0]
+            dz = ball_pos[2] - ankle_pos[2]
+            
+            # Calculate rotation around Y axis in degrees
+            # math.atan2(dx, dz) gives the angle from Z axis towards X axis
+            y_rot = math.degrees(math.atan2(dx, dz))
+            
+            # Apply heading rotation directly
+            cmds.xform(l_foot_ik_zero, rotation=(0, y_rot, 0), worldSpace=True)
+            
+            # Move CVs close to the ground (90% of the way down from ankle to world Y 0) and halfway up the ankle bone
+            ankle_y = cmds.xform(ik_ankle_jnt, query=True, translation=True, worldSpace=True)[1]
+            cmds.move(0.5 * dx, -ankle_y * 0.9, 0.5 * dz, l_foot_ik_ctrl + '.cv[*]', relative=True, worldSpace=True)
+            cmds.scale(0.5, 1, 1, l_foot_ik_ctrl + '.cv[*]', relative=True, objectSpace=True)
+            
+            # Parent IKs to Foot Control
+            cmds.parent(l_foot_ikh, l_foot_ik_ctrl)
+            cmds.parent(l_ball_ikh, l_foot_ik_ctrl)
+            cmds.parent(l_toe_ikh, l_foot_ik_ctrl)
+            cmds.parent(l_foot_ik_zero, l_legIK_CTRL_GRP)
+            
+            # Pole Vector Control
+            ik_knee_jnt = main_knee.split('|')[-1].replace("Main_JNT", "IK_JNT")
+            l_knee_ik_ctrl = self._createDiamondCurve("L_kneeIK_CTRL", radius=0.5)
+            l_knee_ik_sdk = cmds.group(l_knee_ik_ctrl, name=l_knee_ik_ctrl + "_SDK")
+            l_knee_ik_zero = cmds.group(l_knee_ik_sdk, name=l_knee_ik_ctrl + "_0")
+            
+            # Calculate and set PV position perfectly perpendicular to the hip-ankle line
+            pv_pos = self._calculatePoleVectorPos(ik_thigh, ik_knee_jnt, ik_ankle_jnt, multiplier=thigh_length)
+            cmds.xform(l_knee_ik_zero, translation=pv_pos, worldSpace=True)
+            
+            # Hook up constraints and parenting
+            cmds.parent(l_knee_ik_zero, l_legIK_CTRL_GRP)
+            cmds.poleVectorConstraint(l_knee_ik_ctrl, l_foot_ikh)
+
+        except Exception as e:
+            full_traceback = traceback.format_exc()
+            cmds.error(f"Error building legs: {e}\n\nFull Traceback:\n{full_traceback}")
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
+    def _calculatePoleVectorPos(self, start_jnt, mid_jnt, end_jnt, multiplier=1.0):
+        start_pos = cmds.xform(start_jnt, query=True, worldSpace=True, translation=True)
+        mid_pos = cmds.xform(mid_jnt, query=True, worldSpace=True, translation=True)
+        end_pos = cmds.xform(end_jnt, query=True, worldSpace=True, translation=True)
+        
+        start_vec = om.MVector(start_pos)
+        mid_vec = om.MVector(mid_pos)
+        end_vec = om.MVector(end_pos)
+        
+        # hipAnkle or shoulderWrist
+        line = end_vec - start_vec
+        # hipKnee or shoulderElbow
+        point = mid_vec - start_vec
+        projection = (point * line.normal()) * line.normal()
+        pv_pos = start_vec + projection + ((point - projection).normal() * multiplier)
+        
+        return [pv_pos.x, pv_pos.y, pv_pos.z]
+
     def createControlObjects(self, *args):
         pass
 
