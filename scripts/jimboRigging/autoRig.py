@@ -286,6 +286,7 @@ class ControlRigUI:
         # CHAPTER 5: Control Objects
         # ----------------------------------------------------------------------
         self.step5_frame = cmds.frameLayout(label="Step 5: Leg Stretch", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.step5_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
         
         cmds.rowLayout(numberOfColumns=3, columnWidth3=(200, 50, 50), adjustableColumn=1)
         self.stretch_top_loc_field = cmds.textField(placeholderText="Top Locator", height=24)
@@ -325,12 +326,22 @@ class ControlRigUI:
         
         cmds.text(label="\n*** IMPORTANT ***\nPlace the foot controller at the maximum leg extent BEFORE recording.\n", wordWrap=True, align="center", font="boldLabelFont")
         cmds.button(label="Record Max Leg Extent", height=40, backgroundColor=(0.2, 0.6, 0.3), command=self.programLegStretch)
-        cmds.setParent('..')
+        cmds.setParent('..') # exit step5_layout
+        cmds.setParent('..') # exit step5_frame
 
         # CHAPTER 6: Foot Controls
-        cmds.separator(height=10, style='none')
-        
         self.step6_frame = cmds.frameLayout(label="Step 6: Foot Controls", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.step6_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        
+        cmds.text(label="\nPrerequisite Nodes (Auto-Populated):", font="boldLabelFont")
+        
+        cmds.rowLayout(numberOfColumns=3, columnWidth3=(200, 50, 50), adjustableColumn=1)
+        self.step6_foot_ctrl_field = cmds.textField(placeholderText="Foot Controller", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadObject, self.step6_foot_ctrl_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.step6_foot_ctrl_field))
+        cmds.setParent('..')
+        
+        cmds.separator(height=10, style='in')
         
         cmds.text(label="\nClick 'Generate Pivot Locators' to spawn templates. Move them to perfectly border your geometry, then hit 'Build Foot Controls'.\n", wordWrap=True, align="center")
         
@@ -378,10 +389,22 @@ class ControlRigUI:
         
         cmds.button(label="Build Foot Controls", height=40, backgroundColor=(0.2, 0.6, 0.3), command=self.buildFootControls)
         
-        cmds.setParent('..')
-        cmds.setParent('..')
-        cmds.setParent('..')
-
+        cmds.setParent('..') # exit step6_layout
+        cmds.setParent('..') # exit step6_frame
+        
+        # CHAPTER 7: Mirror Leg
+        self.step7_frame = cmds.frameLayout(label="Step 7: Mirror Leg", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.step7_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        
+        cmds.text(label="\n*** IMPORTANT ***\nModify controller CVs on the left leg to your liking to fit the geometry before continuing.\n", wordWrap=True, align="center", font="boldLabelFont")
+        cmds.button(label="Mirror Leg", height=40, backgroundColor=(0.2, 0.5, 0.6), command=self.mirrorLeg)
+        
+        cmds.setParent('..') # exit step7_layout
+        cmds.setParent('..') # exit step7_frame
+        
+        cmds.setParent('..') # exit main columnLayout
+        cmds.setParent('..') # exit main scrollLayout
+        cmds.setParent('..') # exit window
         cmds.showWindow(self.window)
 
     def analyzeRig(self, *args):
@@ -408,6 +431,7 @@ class ControlRigUI:
         l_ball = None
         l_toe = None
         hip_ctrl = None
+        foot_ctrl = None
         
         for node in descendants:
             short_name = node.split('|')[-1]
@@ -433,6 +457,8 @@ class ControlRigUI:
                 l_toe = node
             elif short_name == "chacha_CTRL" and not hip_ctrl:
                 hip_ctrl = node
+            elif short_name == "L_footIK_CTRL" and not foot_ctrl:
+                foot_ctrl = node
                 
         populated = []
         if cog:
@@ -470,6 +496,10 @@ class ControlRigUI:
         if hip_ctrl:
             cmds.textField(self.hip_ctrl_text_field, edit=True, text=hip_ctrl)
             populated.append("Hip Control")
+        if foot_ctrl:
+            cmds.textField(self.stretch_foot_ctrl_field, edit=True, text=foot_ctrl)
+            cmds.textField(self.step6_foot_ctrl_field, edit=True, text=foot_ctrl)
+            populated.append("Foot Control")
             
         if populated:
             cmds.inViewMessage(amg='<hl>Rig Analyzed</hl>: Found and populated {}.'.format(", ".join(populated)), pos='midCenter', fade=True)
@@ -1596,6 +1626,9 @@ class ControlRigUI:
             l_legFKIK_ctrl_zero, l_legFKIK_ctrl_sdk = self._groupOverAlign(l_legFKIK_ctrl, main_ankle)
             cmds.move(-0.5 * l_ankle_length, 0, 0, l_legFKIK_ctrl + '.cv[*]', relative=True, objectSpace=True)
             self._orientCVsUpright(l_legFKIK_ctrl, main_ankle, aim_axis=(1,0,0))
+            
+            # Constrain FK/IK switch to the ankle so it moves with the foot
+            cmds.parentConstraint(main_ankle, l_legFKIK_ctrl_zero, maintainOffset=True)
             if not cmds.attributeQuery("FKIK", node=l_legFKIK_ctrl, exists=True):
                 cmds.addAttr(l_legFKIK_ctrl, longName="FKIK", niceName= "FK/IK", attributeType="float", minValue=0, maxValue=1, defaultValue=1.0, keyable=True)
                 
@@ -1836,6 +1869,7 @@ class ControlRigUI:
             cmds.textField(self.stretch_bot_loc_field, edit=True, text=l_legIKBot_LOC)
             cmds.textField(self.stretch_dist_field, edit=True, text=l_legIK_DIST)
             cmds.textField(self.stretch_foot_ctrl_field, edit=True, text=l_foot_ik_ctrl)
+            cmds.textField(self.step6_foot_ctrl_field, edit=True, text=l_foot_ik_ctrl)
             cmds.textField(self.stretch_thigh_ik_field, edit=True, text=l_ik_thigh_jnt)
 
         except Exception as e:
@@ -2002,9 +2036,9 @@ class ControlRigUI:
                 cmds.warning("Please populate all 6 pivot locators.")
                 return
                 
-            foot_ik_ctrl = cmds.textField(self.stretch_foot_ctrl_field, query=True, text=True)
+            foot_ik_ctrl = cmds.textField(self.step6_foot_ctrl_field, query=True, text=True)
             if not foot_ik_ctrl:
-                cmds.warning("Please populate the Foot Controller field in Step 5 before building foot controls.")
+                cmds.warning("Please populate the Foot Controller field in Step 6 before building foot controls.")
                 return
             
             def create_ctrl(name, radius=2.0, crescent=False, rotate_cvs=(0, 0, 0), translate_cvs=(0, 0, 0)):
@@ -2031,7 +2065,7 @@ class ControlRigUI:
                 return ctrl, sdk_grp, zero_grp
                 
             heel_ctrl, heel_sdk, heel_zero = create_ctrl("L_heel_CTRL", 1.0, crescent=True, rotate_cvs=(0, 180, 0))
-            toe_ctrl, toe_sdk, toe_zero = create_ctrl("L_toePivot_CTRL", 0.75, crescent=True)
+            toe_ctrl, toe_sdk, toe_zero = create_ctrl("L_toePivot_CTRL", 0.75, crescent=True, translate_cvs=(0, 0, 0))
             ankle_out_ctrl, ankle_out_sdk, ankle_out_zero = create_ctrl("L_ankleOut_CTRL", 0.75, crescent=True, rotate_cvs=(0, 90, 0))
             ankle_in_ctrl, ankle_in_sdk, ankle_in_zero = create_ctrl("L_ankleIn_CTRL", 0.75, crescent=True, rotate_cvs=(0, -90, 0))
             ball_floor_ctrl, ball_floor_sdk, ball_floor_zero = create_ctrl("L_ballPivot_CTRL", 0.25, crescent=False, rotate_cvs=(-90, 0, 0), translate_cvs=(0, 1.5, 0))
@@ -2039,8 +2073,13 @@ class ControlRigUI:
             toe_wiggle_ctrl, toe_wiggle_sdk, toe_wiggle_zero = create_ctrl("L_toeWiggle_CTRL", 0.25, crescent=False, translate_cvs=(0, 0, 2.0))
             
             def snap_zero(zero_grp, loc):
+                # Match translation perfectly to the locator
                 pos = cmds.xform(loc, query=True, worldSpace=True, translation=True)
                 cmds.xform(zero_grp, worldSpace=True, translation=pos)
+                
+                # Match orientation perfectly to the Foot Controller
+                temp_const = cmds.orientConstraint(foot_ik_ctrl, zero_grp, maintainOffset=False)
+                cmds.delete(temp_const)
                 
             snap_zero(heel_zero, heel_loc)
             snap_zero(toe_zero, toe_loc)
@@ -2049,29 +2088,142 @@ class ControlRigUI:
             snap_zero(ball_floor_zero, ball_floor_loc)
             snap_zero(foot_roll_zero, ball_loc)
             snap_zero(toe_wiggle_zero, ball_loc)
-            
-            cmds.parent(toe_zero, heel_ctrl)
+
+            cmds.parent(heel_zero, foot_ik_ctrl)
+            cmds.parent(ball_floor_zero, heel_ctrl)
+            cmds.parent(toe_zero, ball_floor_ctrl)
             cmds.parent(ankle_out_zero, toe_ctrl)
             cmds.parent(ankle_in_zero, ankle_out_ctrl)
-            cmds.parent(ball_floor_zero, ankle_in_ctrl)
-            
-            cmds.parent(foot_roll_zero, ball_floor_ctrl)
-            cmds.parent(toe_wiggle_zero, ball_floor_ctrl)
-            
-            cmds.parent(heel_zero, foot_ik_ctrl)
+            cmds.parent(foot_roll_zero, ankle_in_ctrl)
+            cmds.parent(toe_wiggle_zero, ankle_in_ctrl)
             
             try:
                 cmds.parent("L_foot_IKH", foot_roll_ctrl)
-                cmds.parent("L_ball_IKH", ball_floor_ctrl)
+                cmds.parent("L_ball_IKH", ankle_in_ctrl)
                 cmds.parent("L_toe_IKH", toe_wiggle_ctrl)
-            except Exception as e:
-                cmds.warning(f"Could not re-parent IK handles directly. Ensure they exist with standard names: {e}")
                 
-            print("Foot Reverse Hierarchy Built Successfully!")
+                cmds.setAttr("L_foot_IKH.v", 0)
+                cmds.setAttr("L_ball_IKH.v", 0)
+                cmds.setAttr("L_toe_IKH.v", 0)
+            except Exception as e:
+                cmds.warning(f"Could not re-parent or hide IK handles directly. Ensure they exist with standard names: {e}")
+                
+            print("Foot Control Hierarchy Built Successfully!")
+
+            if not cmds.attributeQuery("footCTRLVIS", node=foot_ik_ctrl, exists=True):
+                cmds.addAttr(foot_ik_ctrl, longName="footCTRLVIS", attributeType="enum", enumName="Off:On", keyable=False)
+            cmds.setAttr(f"{foot_ik_ctrl}.footCTRLVIS", channelBox=True)
             
+            # foot controls are parented to only need to connectr top level visibility
+            cmds.connectAttr(f"{foot_ik_ctrl}.footCTRLVIS", f"{heel_zero}.v")
+
+            # Add foot control attributes
+            foot_attrs = ["footRoll", "ankleRoll", "toeRoll", "heelPivot", "ballPivot", "toePivot", "toeWiggle"]
+            for attr in foot_attrs:
+                if not cmds.attributeQuery(attr, node=foot_ik_ctrl, exists=True):
+                    cmds.addAttr(foot_ik_ctrl, longName=attr, attributeType="float", keyable=True)
+            
+            # Setup SetDrivenKeys for foot attributes
+            # Format: (driver_attr, target_node, target_attr, keys_list, pre_infinity, post_infinity)
+            sdks = [
+                ("footRoll", foot_roll_sdk, "rx", [(0, 0), (10, 40)], "constant", "cycleRelative"),
+                ("footRoll", heel_sdk, "rx", [(-10, -40), (0, 0)], "cycleRelative", "constant"),
+                ("ankleRoll", ankle_out_sdk, "rz", [(0, 0), (10, -40)], "constant", "cycleRelative"),
+                ("ankleRoll", ankle_in_sdk, "rz", [(-10, 40), (0, 0)], "cycleRelative", "constant"),
+                ("toeRoll", toe_sdk, "rx", [(0, 0), (10, 40)], "cycleRelative", "cycleRelative"),
+                ("heelPivot", heel_sdk, "ry", [(0, 0), (10, 40)], "cycleRelative", "cycleRelative"),
+                ("ballPivot", ball_floor_sdk, "ry", [(0, 0), (10, 40)], "cycleRelative", "cycleRelative"),
+                ("toePivot", toe_sdk, "ry", [(0, 0), (10, 40)], "cycleRelative", "cycleRelative"),
+                ("toeWiggle", toe_wiggle_sdk, "rx", [(0, 0), (10, 40)], "cycleRelative", "cycleRelative"),
+            ]
+            
+            cmds.select(clear=True)
+            for driver_attr, target_node, target_attr, keys, pre_inf, post_inf in sdks:
+                for drv_val, target_val in keys:
+                    cmds.setDrivenKeyframe(
+                        f"{target_node}.{target_attr}", 
+                        currentDriver=f"{foot_ik_ctrl}.{driver_attr}", 
+                        driverValue=drv_val, 
+                        value=target_val, 
+                        inTangentType="linear", 
+                        outTangentType="linear"
+                    )
+                # Apply explicit pre and post infinity bounds
+                cmds.setInfinity(target_node, attribute=target_attr, preInfinite=pre_inf, postInfinite=post_inf)
+
+            # Re-parent LegIKBot_LOC if it exists to allow leg stretch during foot roll
+            if cmds.objExists("L_legIKBot_LOC"):
+                # Find existing parent constraints on the locator and delete them
+                existing_constraints = cmds.listRelatives("L_legIKBot_LOC", type="parentConstraint")
+                if existing_constraints:
+                    cmds.delete(existing_constraints)
+                
+                # Add new parent constraint to footRoll control
+                cmds.parentConstraint(foot_roll_ctrl, "L_legIKBot_LOC", maintainOffset=True)
+
+            # --- CLEANUP & ORGANIZATION ---
+            # 1. Delete pivot placement locators
+            gen_locs = [heel_loc, toe_loc, ankle_out_loc, ankle_in_loc, ball_loc, ball_floor_loc]
+            for loc in gen_locs:
+                if loc and cmds.objExists(loc):
+                    cmds.delete(loc)
+                    
+            # 2. Organize Leg IK Distance nodes
+            if cmds.objExists("L_legIK_DIST_GRP"):
+                if not cmds.objExists("legIK_DIST_GRP"):
+                    cmds.group(empty=True, name="legIK_DIST_GRP")
+                try: cmds.parent("L_legIK_DIST_GRP", "legIK_DIST_GRP")
+                except: pass
+
+            if not cmds.objExists("leg_MISC_GRP"):
+                cmds.group(empty=True, name="leg_MISC_GRP")
+            if cmds.objExists("legIK_DIST_GRP"):
+                try: cmds.parent("legIK_DIST_GRP", "leg_MISC_GRP")
+                except: pass
+
+            if not cmds.objExists("MISC_GRP"):
+                cmds.group(empty=True, name="MISC_GRP")
+            if cmds.objExists("leg_MISC_GRP"):
+                try: cmds.parent("leg_MISC_GRP", "MISC_GRP")
+                except: pass
+                
+            # 3. Organize Joint Chains
+            chains_to_group = ["L_upLeg_Main_JNT", "L_upLeg_FK_JNT", "L_upLeg_IK_JNT"]
+            if any(cmds.objExists(j) for j in chains_to_group):
+                if not cmds.objExists("L_leg_JNT_GRP"):
+                    cmds.group(empty=True, name="L_leg_JNT_GRP")
+                for j in chains_to_group:
+                    if cmds.objExists(j):
+                        try: cmds.parent(j, "L_leg_JNT_GRP")
+                        except: pass
+                        
+            if not cmds.objExists("leg_JNT_GRP"):
+                cmds.group(empty=True, name="leg_JNT_GRP")
+            if cmds.objExists("L_leg_JNT_GRP"):
+                try: cmds.parent("L_leg_JNT_GRP", "leg_JNT_GRP")
+                except: pass
+                
+            if not cmds.objExists("JNT_GRP"):
+                cmds.group(empty=True, name="JNT_GRP")
+            if cmds.objExists("leg_JNT_GRP"):
+                try: cmds.parent("leg_JNT_GRP", "JNT_GRP")
+                except: pass
+
         except Exception as e:
             full_traceback = traceback.format_exc()
             cmds.error(f"Error building foot controls: {e}\n\nFull Traceback:\n{full_traceback}")
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
+    def mirrorLeg(self, *args):
+        try:
+            cmds.undoInfo(openChunk=True)
+            print("Mirror Leg functionality will be implemented here.")
+            cmds.confirmDialog(title="Mirror Leg", message="Modify the controller CVs on the left leg to fit the geometry.\n\nMirror logic pending...", button=["OK"])
+            
+        except Exception as e:
+            full_traceback = traceback.format_exc()
+            cmds.error(f"Error mirroring leg: {e}\n\nFull Traceback:\n{full_traceback}")
         finally:
             cmds.undoInfo(closeChunk=True)
 
