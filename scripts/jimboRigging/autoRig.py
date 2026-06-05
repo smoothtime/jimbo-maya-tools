@@ -335,6 +335,7 @@ class ControlRigUI:
         cmds.text(label="\nClick 'Generate Pivot Locators' to spawn templates. Move them to perfectly border your geometry, then hit 'Build Foot Controls'.\n", wordWrap=True, align="center")
         
         cmds.button(label="Generate Pivot Locators", height=35, command=self.generateFootPivotLocators)
+        cmds.button(label="Scan For Locators", height=30, command=self.scanFootPivotLocators)
         cmds.separator(height=10, style='none')
         
         cmds.rowLayout(numberOfColumns=3, columnWidth3=(200, 50, 50), adjustableColumn=1)
@@ -1930,12 +1931,12 @@ class ControlRigUI:
             offset = 5.0 # Rough offset for templates
             
             locs = {}
-            locs['L_Heel_Pivot_LOC'] = [ankle_pos[0], 0, ankle_pos[2] - offset]
-            locs['L_Toe_Pivot_LOC'] = [toe_pos[0], 0, toe_pos[2] + offset]
-            locs['L_AnkleIn_Pivot_LOC'] = [ankle_pos[0] - offset, 0, ball_pos[2]]
-            locs['L_AnkleOut_Pivot_LOC'] = [ankle_pos[0] + offset, 0, ball_pos[2]]
-            locs['L_Ball_Pivot_LOC'] = [ball_pos[0], ball_pos[1], ball_pos[2]]
-            locs['L_BallFloor_Pivot_LOC'] = [ball_pos[0], 0, ball_pos[2]]
+            locs['jimbo_L_Heel_Pivot_LOC'] = [ankle_pos[0], 0, ankle_pos[2] - offset]
+            locs['jimbo_L_Toe_Pivot_LOC'] = [toe_pos[0], 0, toe_pos[2] + offset]
+            locs['jimbo_L_AnkleIn_Pivot_LOC'] = [ankle_pos[0] - offset, 0, ball_pos[2]]
+            locs['jimbo_L_AnkleOut_Pivot_LOC'] = [ankle_pos[0] + offset, 0, ball_pos[2]]
+            locs['jimbo_L_Ball_Pivot_LOC'] = [ball_pos[0], ball_pos[1], ball_pos[2]]
+            locs['jimbo_L_BallFloor_Pivot_LOC'] = [ball_pos[0], 0, ball_pos[2]]
             
             created_locs = {}
             for name, pos in locs.items():
@@ -1945,12 +1946,12 @@ class ControlRigUI:
                 cmds.xform(loc, worldSpace=True, translation=pos)
                 created_locs[name] = loc
                 
-            cmds.textField(self.heel_loc_field, edit=True, text=created_locs['L_Heel_Pivot_LOC'])
-            cmds.textField(self.toe_loc_field, edit=True, text=created_locs['L_Toe_Pivot_LOC'])
-            cmds.textField(self.ankle_in_loc_field, edit=True, text=created_locs['L_AnkleIn_Pivot_LOC'])
-            cmds.textField(self.ankle_out_loc_field, edit=True, text=created_locs['L_AnkleOut_Pivot_LOC'])
-            cmds.textField(self.ball_loc_field, edit=True, text=created_locs['L_Ball_Pivot_LOC'])
-            cmds.textField(self.ball_floor_loc_field, edit=True, text=created_locs['L_BallFloor_Pivot_LOC'])
+            cmds.textField(self.heel_loc_field, edit=True, text=created_locs['jimbo_L_Heel_Pivot_LOC'])
+            cmds.textField(self.toe_loc_field, edit=True, text=created_locs['jimbo_L_Toe_Pivot_LOC'])
+            cmds.textField(self.ankle_in_loc_field, edit=True, text=created_locs['jimbo_L_AnkleIn_Pivot_LOC'])
+            cmds.textField(self.ankle_out_loc_field, edit=True, text=created_locs['jimbo_L_AnkleOut_Pivot_LOC'])
+            cmds.textField(self.ball_loc_field, edit=True, text=created_locs['jimbo_L_Ball_Pivot_LOC'])
+            cmds.textField(self.ball_floor_loc_field, edit=True, text=created_locs['jimbo_L_BallFloor_Pivot_LOC'])
             
             cmds.select(clear=True)
             print("Foot pivot locators generated! Please adjust them to match your foot geometry.")
@@ -1960,6 +1961,31 @@ class ControlRigUI:
             cmds.error(f"Error generating pivot locators: {e}\n\nFull Traceback:\n{full_traceback}")
         finally:
             cmds.undoInfo(closeChunk=True)
+
+    def scanFootPivotLocators(self, *args):
+        try:
+            expected_locs = {
+                'jimbo_L_Heel_Pivot_LOC': self.heel_loc_field,
+                'jimbo_L_Toe_Pivot_LOC': self.toe_loc_field,
+                'jimbo_L_AnkleIn_Pivot_LOC': self.ankle_in_loc_field,
+                'jimbo_L_AnkleOut_Pivot_LOC': self.ankle_out_loc_field,
+                'jimbo_L_Ball_Pivot_LOC': self.ball_loc_field,
+                'jimbo_L_BallFloor_Pivot_LOC': self.ball_floor_loc_field
+            }
+            
+            found_count = 0
+            for name, field in expected_locs.items():
+                if cmds.objExists(name):
+                    cmds.textField(field, edit=True, text=name)
+                    found_count += 1
+                    
+            if found_count > 0:
+                print(f"Scanned and successfully loaded {found_count} foot pivot locators!")
+            else:
+                cmds.warning("No locators found with the 'jimbo_' prefix.")
+                
+        except Exception as e:
+            cmds.error(f"Error scanning for locators: {e}")
 
     def buildFootControls(self, *args):
         try:
@@ -1990,23 +2016,27 @@ class ControlRigUI:
                     # Push cv[1] slightly more to form a nicer, sharper arc
                     cmds.xform(f"{ctrl}.cv[1]", relative=True, translation=(0, 0, radius * 0.4))
                     
-                if rotate_cvs != (0, 0, 0) or translate_cvs != (0, 0, 0):
-                    # Translate and rotate the transform, then freeze to bake into the CVs
-                    cmds.setAttr(f"{ctrl}.translate", *translate_cvs)
-                    cmds.setAttr(f"{ctrl}.rotate", *rotate_cvs)
-                    cmds.makeIdentity(ctrl, apply=True, t=1, r=1, s=0, n=0, pn=1)
+                if rotate_cvs != (0, 0, 0):
+                    # Rotate the CVs directly around the local origin, avoiding transform modifications entirely
+                    cmds.rotate(rotate_cvs[0], rotate_cvs[1], rotate_cvs[2], f"{ctrl}.cv[*]", pivot=(0,0,0), relative=True)
+                    
+                if translate_cvs != (0, 0, 0):
+                    # Move the CVs directly so the actual transform pivot remains perfectly untouched at (0,0,0)
+                    cmds.xform(f"{ctrl}.cv[*]", relative=True, translation=translate_cvs)
                     
                 sdk_grp = cmds.group(ctrl, name=f"{name}_sdk")
+                cmds.xform(sdk_grp, pivots=(0,0,0), worldSpace=True) # Force pivot to origin
                 zero_grp = cmds.group(sdk_grp, name=f"{name}_0")
+                cmds.xform(zero_grp, pivots=(0,0,0), worldSpace=True) # Force pivot to origin
                 return ctrl, sdk_grp, zero_grp
                 
             heel_ctrl, heel_sdk, heel_zero = create_ctrl("L_heel_CTRL", 1.0, crescent=True, rotate_cvs=(0, 180, 0))
-            toe_ctrl, toe_sdk, toe_zero = create_ctrl("L_toePivot_CTRL", 0.9, crescent=True, translate_cvs=(0, 0, 0.5))
+            toe_ctrl, toe_sdk, toe_zero = create_ctrl("L_toePivot_CTRL", 0.75, crescent=True)
             ankle_out_ctrl, ankle_out_sdk, ankle_out_zero = create_ctrl("L_ankleOut_CTRL", 0.75, crescent=True, rotate_cvs=(0, 90, 0))
             ankle_in_ctrl, ankle_in_sdk, ankle_in_zero = create_ctrl("L_ankleIn_CTRL", 0.75, crescent=True, rotate_cvs=(0, -90, 0))
-            ball_floor_ctrl, ball_floor_sdk, ball_floor_zero = create_ctrl("L_ballPivot_CTRL", 0.75, crescent=False, rotate_cvs=(-90, 0, 0), translate_cvs=(0, 1, 0))
-            foot_roll_ctrl, foot_roll_sdk, foot_roll_zero = create_ctrl("L_footRoll_CTRL", 0.6, crescent=True, rotate_cvs=(-90, 0, 0), translate_cvs=(0, 0.5, 0))
-            toe_wiggle_ctrl, toe_wiggle_sdk, toe_wiggle_zero = create_ctrl("L_toeWiggle_CTRL", 0.6, crescent=False, translate_cvs=(0, 0, 1))
+            ball_floor_ctrl, ball_floor_sdk, ball_floor_zero = create_ctrl("L_ballPivot_CTRL", 0.25, crescent=False, rotate_cvs=(-90, 0, 0), translate_cvs=(0, 1.5, 0))
+            foot_roll_ctrl, foot_roll_sdk, foot_roll_zero = create_ctrl("L_footRoll_CTRL", 0.6, crescent=True, rotate_cvs=(-90, 0, 0), translate_cvs=(0, 0.3, 0))
+            toe_wiggle_ctrl, toe_wiggle_sdk, toe_wiggle_zero = create_ctrl("L_toeWiggle_CTRL", 0.25, crescent=False, translate_cvs=(0, 0, 2.0))
             
             def snap_zero(zero_grp, loc):
                 pos = cmds.xform(loc, query=True, worldSpace=True, translation=True)
