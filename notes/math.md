@@ -46,3 +46,17 @@ The issue is that the local axes are not going to point cleanly out in front of 
 So instead if we take the vector from the hip to the ankle and the vector from the hip to the knee and then project hipKnee onto hipAnkle we can get a position that is coplanar and directly behind the knee.
 Then we can move in the direction of the knee joint, overshoot, and be in front.
 
+
+## Clavicle Controller Rotation/Offset
+
+The clavicle controller is a little arrow that we want pointing up out of the shoulder.
+We make the curve pointing up in world Y, but when we group over align the controller to the clavicle, +Y means something different.
+We want to have the arrow pointing in the axis closest to world up, and then we want to translate the control vertices "up" in that direction as well to stop clipping the geometry.
+In class we made skeletons that had Y pointing vaguely forward, but I don't know how reliable that is.
+
+To orient the clavicle arrow control dynamically without making assumptions about how the skeleton was built, we can look at the joint's **World Matrix**. 
+
+Row 0, Row 1, and Row 2 of the matrix represent the local X, Y, and Z axis direction vectors in world space. By taking the dot product of these local vectors with a given target world direction (like `(0, 1, 0)` for Up) we can find which local axis is the closest to "Up"
+So once we know which local axis is the best match, we do 2 things
+1) check this switch statement that maps out how to rotate (0, 1, 0) to that target axis.
+2) move up by some factor of that local axis hoping the geometry doesn't clip. Prayge

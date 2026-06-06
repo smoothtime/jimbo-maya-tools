@@ -495,6 +495,7 @@ class ControlRigUI:
         cog = None
         spine_base = None
         spine_tip = None
+        spine_tip_ctrl = None
         global_scale = None
         neck = None
         head = None
@@ -520,6 +521,8 @@ class ControlRigUI:
                 spine_base = node
             elif short_name == "chest_bridgeJNT" and not spine_tip:
                 spine_tip = node
+            elif short_name == "spineTip_CTRL" and not spine_tip_ctrl:
+                spine_tip_ctrl = node
             elif short_name == "neck_bridgeJNT" and not neck:
                 neck = node
             elif short_name == "head_bridgeJNT" and not head:
@@ -563,7 +566,6 @@ class ControlRigUI:
         if spine_tip:
             cmds.textField(self.spine_tip_text_field, edit=True, text=spine_tip)
             cmds.textField(self.neck_spine_tip_text_field, edit=True, text=spine_tip)
-            cmds.textField(self.arm_spine_tip_text_field, edit=True, text=spine_tip)
             populated.append("Spine Tip")
         if neck:
             cmds.textField(self.neck_joint_text_field, edit=True, text=neck)
@@ -599,6 +601,9 @@ class ControlRigUI:
         if r_toe:
             cmds.textField(self.r_toe_joint_text_field, edit=True, text=r_toe)
             populated.append("R Toe Tip")
+        if spine_tip_ctrl:
+            cmds.textField(self.arm_spine_tip_text_field, edit=True, text=spine_tip_ctrl)
+            populated.append("Arm Spine Tip")
         if l_clavicle:
             cmds.textField(self.l_clavicle_joint_text_field, edit=True, text=l_clavicle)
             populated.append("L Clavicle")
@@ -765,6 +770,39 @@ class ControlRigUI:
         else:
             return (0, 0, 1), max_val
 
+    def _getLocalAxisToWorld(self, node, world_dir):
+        m = cmds.xform(node, query=True, worldSpace=True, matrix=True)
+        x_world = [m[0], m[1], m[2]]
+        y_world = [m[4], m[5], m[6]]
+        z_world = [m[8], m[9], m[10]]
+        
+        x_dot = x_world[0]*world_dir[0] + x_world[1]*world_dir[1] + x_world[2]*world_dir[2]
+        y_dot = y_world[0]*world_dir[0] + y_world[1]*world_dir[1] + y_world[2]*world_dir[2]
+        z_dot = z_world[0]*world_dir[0] + z_world[1]*world_dir[1] + z_world[2]*world_dir[2]
+        
+        dots = [(abs(x_dot), x_dot, (1,0,0)), 
+                (abs(y_dot), y_dot, (0,1,0)), 
+                (abs(z_dot), z_dot, (0,0,1))]
+                
+        dots.sort(key=lambda item: item[0], reverse=True)
+        
+        best_axis = dots[0][2]
+        is_positive = dots[0][1] > 0
+        
+        if is_positive:
+            return best_axis
+        else:
+            return (-best_axis[0], -best_axis[1], -best_axis[2])
+
+    def _getDynamicRotation(self, target_axis):
+        if target_axis == (0, 1, 0):   return (0, 0, 0)
+        elif target_axis == (0, -1, 0):return (180, 0, 0)
+        elif target_axis == (0, 0, 1): return (90, 0, 0)
+        elif target_axis == (0, 0, -1):return (-90, 0, 0)
+        elif target_axis == (1, 0, 0): return (0, 0, -90)
+        elif target_axis == (-1, 0, 0):return (0, 0, 90)
+        return (0, 0, 0)
+
     def _lockAndHideAttrs(self, ctrl, attrs):
         if not cmds.objExists(ctrl):
             return
@@ -785,6 +823,20 @@ class ControlRigUI:
             
         # degree 1 creates a linear (straight edge) curve connecting the points
         return cmds.curve(name=name, degree=1, point=pts)
+
+    def _createArrowCurve(self, name, size=1.0):
+        pts = [
+            (0, 1*size, 0),      # Tip
+            (0.5*size, 0, 0),    # Right wing
+            (0.2*size, 0, 0),    # Right inner corner
+            (0.2*size, -1*size, 0), # Right bottom
+            (-0.2*size, -1*size, 0),# Left bottom
+            (-0.2*size, 0, 0),   # Left inner corner
+            (-0.5*size, 0, 0),   # Left wing
+            (0, 1*size, 0)       # Back to tip
+        ]
+        return cmds.curve(name=name, degree=1, point=pts)
+
     def _createDiamondCurve(self, name, radius=1.0):
         s1 = self._createSquareCurve(name + "_s1", normal=(1,0,0), radius=radius)
         s2 = self._createSquareCurve(name + "_s2", normal=(0,1,0), radius=radius)
@@ -1669,12 +1721,6 @@ class ControlRigUI:
             main_knee = path_to_thigh[2]
             main_mid_knee = path_to_thigh[3]
             main_ankle = path_to_thigh[4]
-            
-            cmds.warning("main_thigh: " + main_thigh)
-            cmds.warning("main_mid_thigh: " + main_mid_thigh)
-            cmds.warning("main_knee: " + main_knee)
-            cmds.warning("main_mid_knee: " + main_mid_knee)
-            cmds.warning("main_ankle: " + main_ankle)
 
             # Reorganize Main chain
             cmds.parent(main_knee, main_thigh)
@@ -2443,6 +2489,46 @@ class ControlRigUI:
                 except: pass
 
     def _buildArmLogic(self, side, spine_tip, clavicle, shoulder, wrist):
+        # 0. Clavicle Setup
+        clav_pos = cmds.xform(clavicle, query=True, worldSpace=True, translation=True)
+        shoulder_pos = cmds.xform(shoulder, query=True, worldSpace=True, translation=True)
+        diff_x = shoulder_pos[0] - clav_pos[0]
+        diff_y = shoulder_pos[1] - clav_pos[1]
+        diff_z = shoulder_pos[2] - clav_pos[2]
+        clav_len = math.sqrt(diff_x**2 + diff_y**2 + diff_z**2)
+        
+        clav_ctrl = self._createArrowCurve(f"{side}_clavicle_CTRL", size=clav_len * 0.5)
+        clav_zero, clav_sdk = self._groupOverAlign(clav_ctrl, clavicle)
+        
+        up_vec = self._getLocalAxisToWorld(clavicle, (0, 1, 0)) # World Up
+        
+        rot_offset = self._getDynamicRotation(up_vec)
+        cmds.xform(clav_ctrl + ".cv[*]", rotation=rot_offset, relative=True)
+        
+        cmds.xform(clav_ctrl + ".cv[*]", translation=(diff_x, diff_y, diff_z), relative=True, worldSpace=True)
+        
+        offset_x = up_vec[0] * clav_len
+        offset_y = up_vec[1] * clav_len
+        offset_z = up_vec[2] * clav_len
+        cmds.xform(clav_ctrl + ".cv[*]", translation=(offset_x, offset_y, offset_z), relative=True, objectSpace=True)
+        
+        cmds.parentConstraint(clav_ctrl, clavicle, maintainOffset=False)
+        self._lockAndHideAttrs(clav_ctrl, ['sx', 'sy', 'sz', 'v'])
+        
+        clav_locator = cmds.spaceLocator(name=clav_ctrl + "_spaceLOC")[0]
+        cmds.setAttr(clav_locator + ".v", 0)
+        temp_const = cmds.parentConstraint(clavicle, clav_locator, maintainOffset=False)
+        cmds.delete(temp_const)
+        
+        cmds.parent(clav_locator, spine_tip)
+        
+        cmds.pointConstraint(clav_locator, clav_zero, maintainOffset=False)
+        orient_const_clav = cmds.orientConstraint(clav_locator, clav_zero, maintainOffset=False)[0]
+        
+        cmds.addAttr(clav_ctrl, longName="orient", attributeType="enum", enumName="<none>:Chest", keyable=True)
+        cmds.connectAttr(clav_ctrl + ".orient", orient_const_clav + "." + clav_locator.split('|')[-1] + "W0", force=True)
+        cmds.setAttr(clav_ctrl + ".orient", 1)
+
         # 1. Duplicate shoulder to wrist
         shoulder_dupes = cmds.duplicate(shoulder)
         top_arm_node = shoulder_dupes[0]
@@ -2455,6 +2541,11 @@ class ControlRigUI:
         main_shoulder_long = self._renameHierarchy(arm_hierarchy, "_bridgeJNT", "Main_JNT")
         main_shoulder_short = shoulder.split('|')[-1].replace("_bridgeJNT", "Main_JNT")
         main_wrist_short = wrist.split('|')[-1].replace("_bridgeJNT", "Main_JNT")
+        
+        # Delete any children below the wrist (like fingers) so they don't propagate into FK/IK chains
+        wrist_children = cmds.listRelatives(main_wrist_short, children=True, fullPath=True) or []
+        if wrist_children:
+            cmds.delete(wrist_children)
         
         # Get path from wrist to shoulder
         curr = main_wrist_short
@@ -2585,6 +2676,73 @@ class ControlRigUI:
         s = ['sx', 'sy', 'sz']
         v = ['v']
         self._lockAndHideAttrs(armFKIK_ctrl, t + r + s + v)
+        
+        # Create visibility groups for arm
+        armCommon_CTRL_GRP = cmds.group(empty=True, name=f"{side}_armCommon_CTRL_GRP", world=True)
+        armFK_CTRL_GRP = cmds.group(empty=True, name=f"{side}_armFK_CTRL_GRP", world=True)
+        armIK_CTRL_GRP = cmds.group(empty=True, name=f"{side}_armIK_CTRL_GRP", world=True)
+        
+        cmds.parent(armFKIK_ctrl_zero, armCommon_CTRL_GRP)
+        
+        cmds.connectAttr(arm_rev_node + ".outputX", armFK_CTRL_GRP + ".visibility", force=True)
+        cmds.connectAttr(armFKIK_ctrl + ".FKIK", armIK_CTRL_GRP + ".visibility", force=True)
+        
+        # Create FK Controls
+        fk_shoulder_jnt = main_shoulder.replace("Main_JNT", "FK_JNT")
+        fk_elbow_jnt = main_elbow.replace("Main_JNT", "FK_JNT")
+        fk_wrist_jnt = main_wrist.replace("Main_JNT", "FK_JNT")
+        
+        # Shoulder FK
+        shld_normal, shld_len = self._getPrimaryAxis(fk_shoulder_jnt, target_child=fk_elbow_jnt)
+        shld_len = shld_len if shld_len > 0.1 else 2.0
+        shld_fk_ctrl = cmds.circle(constructionHistory=False, name=f"{side}_shoulderFK_CTRL", normal=shld_normal, radius=(shld_len * 0.25))[0]
+        shld_fk_zero, shld_fk_sdk = self._groupOverAlign(shld_fk_ctrl, fk_shoulder_jnt)
+        cmds.parentConstraint(shld_fk_ctrl, fk_shoulder_jnt, maintainOffset=False)
+        cmds.addAttr(shld_fk_ctrl, longName="length", attributeType="float", defaultValue=1, keyable=True)
+        
+        # Shoulder Space Switching
+        shld_locator = cmds.spaceLocator(name=f"{side}_shoulderFK_CTRL_LOC")[0]
+        cmds.setAttr(shld_locator + ".v", 0)
+        temp_const = cmds.parentConstraint(fk_shoulder_jnt, shld_locator, maintainOffset=False)
+        cmds.delete(temp_const)
+        
+        cmds.parent(shld_locator, clav_ctrl)
+        
+        cmds.pointConstraint(shld_locator, shld_fk_zero, maintainOffset=False)
+        orient_const_shld = cmds.orientConstraint(shld_locator, shld_fk_zero, maintainOffset=False)[0]
+        
+        cmds.addAttr(shld_fk_ctrl, longName="orient", attributeType="enum", enumName="<none>:Clavicle", keyable=True)
+        cmds.connectAttr(shld_fk_ctrl + ".orient", orient_const_shld + "." + shld_locator.split('|')[-1] + "W0", force=True)
+        cmds.setAttr(shld_fk_ctrl + ".orient", 1)
+        
+        # Elbow FK
+        elbow_normal, elbow_len = self._getPrimaryAxis(fk_elbow_jnt, target_child=fk_wrist_jnt)
+        elbow_len = elbow_len if elbow_len > 0.1 else 2.0
+        elbow_fk_ctrl = cmds.circle(constructionHistory=False, name=f"{side}_elbowFK_CTRL", normal=elbow_normal, radius=(elbow_len * 0.25))[0]
+        elbow_fk_zero, elbow_fk_sdk = self._groupOverAlign(elbow_fk_ctrl, fk_elbow_jnt)
+        cmds.parentConstraint(elbow_fk_ctrl, fk_elbow_jnt, maintainOffset=False)
+        cmds.addAttr(elbow_fk_ctrl, longName="length", attributeType="float", defaultValue=1, keyable=True)
+        
+        # Wrist FK
+        # Since the wrist has no children anymore, we explicitly orient it down X 
+        # and size it relative to the elbow so it doesn't become tiny.
+        wrist_normal = (1, 0, 0)
+        wrist_fk_ctrl = cmds.circle(constructionHistory=False, name=f"{side}_wristFK_CTRL", normal=wrist_normal, radius=(elbow_len * 0.25))[0]
+        wrist_fk_zero, wrist_fk_sdk = self._groupOverAlign(wrist_fk_ctrl, fk_wrist_jnt)
+        cmds.parentConstraint(wrist_fk_ctrl, fk_wrist_jnt, maintainOffset=False)
+        
+        # Parent FK controls
+        cmds.parent(wrist_fk_zero, elbow_fk_ctrl)
+        cmds.parent(elbow_fk_zero, shld_fk_ctrl)
+        cmds.parent(shld_fk_zero, armFK_CTRL_GRP)
+        
+        # Set up SDK for length
+        self._setupLengthSDK(shld_fk_ctrl, elbow_fk_sdk, fk_shoulder_jnt)
+        self._setupLengthSDK(elbow_fk_ctrl, wrist_fk_sdk, fk_elbow_jnt)
+        
+        # Lock and hide scale and visibility
+        for ctrl in [shld_fk_ctrl, elbow_fk_ctrl, wrist_fk_ctrl]:
+            self._lockAndHideAttrs(ctrl, ['sx', 'sy', 'sz', 'v'])
 
     def buildLeftArm(self, *args):
         spine_tip = cmds.textField(self.arm_spine_tip_text_field, query=True, text=True)
