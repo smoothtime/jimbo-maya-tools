@@ -474,6 +474,149 @@ class ControlRigUI:
         cmds.setParent('..') # exit step8_layout
         cmds.setParent('..') # exit step8_frame
         
+        # CHAPTER 9: Arm Stretch
+        self.step9_frame = cmds.frameLayout(label="Step 9: Arm Stretch", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.step9_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        
+        cmds.text(label="Specify the nodes for the arm stretch:", font="boldLabelFont")
+        cmds.button(label="Analyze Rig", height=30, backgroundColor=(0.4, 0.4, 0.4), command=self.analyzeRig)
+        
+        fields = [
+            ("arm_top_loc_text_field", "L_armIKTop_LOC", self.loadObject),
+            ("arm_bot_loc_text_field", "L_armIKBot_LOC", self.loadObject),
+            ("arm_dist_text_field", "L_armIK_DIST", self.loadObject),
+            ("arm_ik_shld_text_field", "L_shoulderIK_JNT", self.loadJointHierarchy),
+            ("arm_ik_ctrl_text_field", "L_armIK_CTRL", self.loadObject),
+            ("arm_global_scale_text_field", "all_CTRL", self.loadObject),
+        ]
+        
+        for attr, placeholder, load_func in fields:
+            cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+            setattr(self, attr, cmds.textField(placeholderText=placeholder, height=24))
+            cmds.button(label="Load", height=24, command=partial(load_func, getattr(self, attr)))
+            cmds.button(label="Clear", height=24, command=partial(self.clearSelection, getattr(self, attr)))
+            cmds.setParent('..')
+            
+        cmds.text(label="\n*** IMPORTANT ***\nPosition the arm IK control to its maximum desired extent before running.\n", wordWrap=True, align="center", font="boldLabelFont")
+        cmds.button(label="Record Max Arm Extent", height=40, backgroundColor=(0.8, 0.4, 0.2), command=self.programLeftArmStretch)
+        
+        cmds.setParent('..') # exit step9_layout
+        cmds.setParent('..') # exit step9_frame
+        
+        # CHAPTER 10: Hand Controls
+        self.step10_frame = cmds.frameLayout(label="Step 10: Build Hand Controls", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.step10_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        
+        cmds.text(label="Specify the wrist joint for the hand:", font="boldLabelFont")
+        cmds.button(label="Analyze Rig", height=30, backgroundColor=(0.4, 0.4, 0.4), command=self.analyzeRig)
+        
+        cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.hand_wrist_joint_text_field = cmds.textField(placeholderText="Left Wrist Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.hand_wrist_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.hand_wrist_joint_text_field))
+        cmds.setParent('..')
+        
+        cmds.separator(height=15, style='in')
+        cmds.button(label="Build Left Hand Controls", height=40, backgroundColor=(0.6, 0.4, 0.2), command=self.buildLeftHandControls)
+        
+        cmds.setParent('..') # exit step10_layout
+        cmds.setParent('..') # exit step10_frame
+        
+        # CHAPTER 11: Finger Presets
+        self.step11_frame = cmds.frameLayout(label="Step 11: Finger Presets", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.step11_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        
+        cmds.text(label="Specify the preset control and finger control parent group:", font="boldLabelFont")
+        
+        # Preset Control
+        cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.finger_preset_ctrl_field = cmds.textField(placeholderText="Left Finger Preset Control", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadObject, self.finger_preset_ctrl_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.finger_preset_ctrl_field))
+        cmds.setParent('..')
+
+        # Finger Control Parent Group
+        cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.finger_sdk_grp_field = cmds.textField(placeholderText="Left Finger Control Group", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadObject, self.finger_sdk_grp_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.finger_sdk_grp_field))
+        cmds.setParent('..')
+        
+        cmds.text(label="\nPose the finger control ***SDK GROUPS*** (not the finger controls themselves), then click a button below to record the pose with SetDrivenKey.\n", wordWrap=True, align="center")
+        
+        # Record Buttons
+        form = cmds.formLayout(numberOfDivisions=100)
+        b1 = cmds.button(label="Curl", height=30, backgroundColor=(0.6, 0.2, 0.2), command=partial(self._recordFingerPreset, "curl"))
+        b2 = cmds.button(label="Scrunch", height=30, backgroundColor=(0.6, 0.3, 0.2), command=partial(self._recordFingerPreset, "scrunch"))
+        b3 = cmds.button(label="Relax", height=30, backgroundColor=(0.6, 0.4, 0.2), command=partial(self._recordFingerPreset, "relax"))
+        b4 = cmds.button(label="Spread", height=30, backgroundColor=(0.6, 0.5, 0.2), command=partial(self._recordFingerPreset, "spread"))
+        b5 = cmds.button(label="ThumbSpread", height=30, backgroundColor=(0.5, 0.6, 0.2), command=partial(self._recordFingerPreset, "thumbSpread"))
+        
+        cmds.formLayout(form, edit=True,
+            attachPosition=[
+                (b1, 'left', 0, 0), (b1, 'right', 1, 20),
+                (b2, 'left', 1, 20), (b2, 'right', 1, 40),
+                (b3, 'left', 1, 40), (b3, 'right', 1, 60),
+                (b4, 'left', 1, 60), (b4, 'right', 1, 80),
+                (b5, 'left', 1, 80), (b5, 'right', 0, 100)
+            ],
+            attachForm=[
+                (b1, 'top', 0), (b1, 'bottom', 0),
+                (b2, 'top', 0), (b2, 'bottom', 0),
+                (b3, 'top', 0), (b3, 'bottom', 0),
+                (b4, 'top', 0), (b4, 'bottom', 0),
+                (b5, 'top', 0), (b5, 'bottom', 0)
+            ]
+        )
+        cmds.setParent('..')
+
+        cmds.separator(height=10, style='none')
+        
+        cmds.setParent('..') # exit step11_layout
+        cmds.setParent('..') # exit step11_frame
+        
+        # CHAPTER 12: Mirror Arm
+        self.step12_frame = cmds.frameLayout(label="Step 12: Mirror Arm", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.step12_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        
+        cmds.text(label="\nRight Arm Joints (Auto-Populated):", font="boldLabelFont")
+        
+        # Spine Tip Control
+        cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.r_arm_spine_tip_text_field = cmds.textField(placeholderText="Spine Tip Control", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadObject, self.r_arm_spine_tip_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.r_arm_spine_tip_text_field))
+        cmds.setParent('..')
+
+        # Right Clavicle Joint
+        cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.r_clavicle_joint_text_field = cmds.textField(placeholderText="Right Clavicle Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.r_clavicle_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.r_clavicle_joint_text_field))
+        cmds.setParent('..')
+
+        # Right Shoulder Joint
+        cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.r_shoulder_joint_text_field = cmds.textField(placeholderText="Right Shoulder Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.r_shoulder_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.r_shoulder_joint_text_field))
+        cmds.setParent('..')
+
+        # Right Wrist Joint
+        cmds.rowLayout(numberOfColumns=3, columnWidth3=(260, 50, 50), adjustableColumn=1, columnAttach3=['both', 'both', 'both'], columnOffset3=[2, 2, 2])
+        self.r_wrist_joint_text_field = cmds.textField(placeholderText="Right Wrist Joint", height=24)
+        cmds.button(label="Load", height=24, command=partial(self.loadJointHierarchy, self.r_wrist_joint_text_field))
+        cmds.button(label="Clear", height=24, command=partial(self.clearSelection, self.r_wrist_joint_text_field))
+        cmds.setParent('..')
+        
+        cmds.text(label="\n*** IMPORTANT ***\nEnsure the left arm and hand are perfectly positioned before mirroring.\n", wordWrap=True, align="center", font="boldLabelFont")
+        cmds.button(label="Mirror Arm", height=40, backgroundColor=(0.2, 0.5, 0.6), command=self.mirrorArm)
+        
+        cmds.setParent('..') # exit step12_layout
+        cmds.setParent('..') # exit step12_frame
+
+        cmds.separator(height=20, style='none')
+        
         cmds.setParent('..') # exit main columnLayout
         cmds.setParent('..') # exit main scrollLayout
         cmds.setParent('..') # exit window
@@ -510,8 +653,16 @@ class ControlRigUI:
         l_clavicle = None
         l_shoulder = None
         l_wrist = None
+        r_clavicle = None
+        r_shoulder = None
+        r_wrist = None
         hip_ctrl = None
         foot_ctrl = None
+        arm_top_loc = None
+        arm_bot_loc = None
+        arm_dist = None
+        arm_ik_shld = None
+        arm_ik_ctrl = None
         
         for node in descendants:
             short_name = node.split('|')[-1]
@@ -551,10 +702,26 @@ class ControlRigUI:
                 l_shoulder = node
             elif short_name == "L_wrist_bridgeJNT" and not l_wrist:
                 l_wrist = node
+            elif short_name == "R_clavicle_bridgeJNT" and not r_clavicle:
+                r_clavicle = node
+            elif short_name == "R_shoulder_bridgeJNT" and not r_shoulder:
+                r_shoulder = node
+            elif short_name == "R_wrist_bridgeJNT" and not r_wrist:
+                r_wrist = node
             elif short_name == "chacha_CTRL" and not hip_ctrl:
                 hip_ctrl = node
             elif short_name == "L_footIK_CTRL" and not foot_ctrl:
                 foot_ctrl = node
+            elif short_name == "L_armIKTop_LOC" and not arm_top_loc:
+                arm_top_loc = node
+            elif short_name == "L_armIKBot_LOC" and not arm_bot_loc:
+                arm_bot_loc = node
+            elif short_name == "L_armIK_DIST" and not arm_dist:
+                arm_dist = node
+            elif short_name == "L_shoulderIK_JNT" and not arm_ik_shld:
+                arm_ik_shld = node
+            elif short_name == "L_armIK_CTRL" and not arm_ik_ctrl:
+                arm_ik_ctrl = node
                 
         populated = []
         if cog:
@@ -612,7 +779,21 @@ class ControlRigUI:
             populated.append("L Shoulder")
         if l_wrist:
             cmds.textField(self.l_wrist_joint_text_field, edit=True, text=l_wrist)
+            cmds.textField(self.hand_wrist_joint_text_field, edit=True, text=l_wrist)
             populated.append("L Wrist")
+        if r_clavicle:
+            cmds.textField(self.r_clavicle_joint_text_field, edit=True, text=r_clavicle)
+            populated.append("R Clavicle")
+        if r_shoulder:
+            cmds.textField(self.r_shoulder_joint_text_field, edit=True, text=r_shoulder)
+            populated.append("R Shoulder")
+        if r_wrist:
+            cmds.textField(self.r_wrist_joint_text_field, edit=True, text=r_wrist)
+            populated.append("R Wrist")
+        if spine_tip_ctrl:
+            cmds.textField(self.arm_spine_tip_text_field, edit=True, text=spine_tip_ctrl)
+            cmds.textField(self.r_arm_spine_tip_text_field, edit=True, text=spine_tip_ctrl)
+            populated.append("Arm Spine Tip")
         if hip_ctrl:
             cmds.textField(self.hip_ctrl_text_field, edit=True, text=hip_ctrl)
             populated.append("Hip Control")
@@ -620,6 +801,23 @@ class ControlRigUI:
             cmds.textField(self.stretch_foot_ctrl_field, edit=True, text=foot_ctrl)
             cmds.textField(self.step6_foot_ctrl_field, edit=True, text=foot_ctrl)
             populated.append("Foot Control")
+        if arm_top_loc:
+            cmds.textField(self.arm_top_loc_text_field, edit=True, text=arm_top_loc)
+            populated.append("Arm Top LOC")
+        if arm_bot_loc:
+            cmds.textField(self.arm_bot_loc_text_field, edit=True, text=arm_bot_loc)
+            populated.append("Arm Bot LOC")
+        if arm_dist:
+            cmds.textField(self.arm_dist_text_field, edit=True, text=arm_dist)
+            populated.append("Arm Dist Node")
+        if arm_ik_shld:
+            cmds.textField(self.arm_ik_shld_text_field, edit=True, text=arm_ik_shld)
+            populated.append("Arm IK Shoulder")
+        if arm_ik_ctrl:
+            cmds.textField(self.arm_ik_ctrl_text_field, edit=True, text=arm_ik_ctrl)
+            populated.append("Arm IK Control")
+        if global_scale:
+            cmds.textField(self.arm_global_scale_text_field, edit=True, text=global_scale)
             
         if populated:
             cmds.inViewMessage(amg='<hl>Rig Analyzed</hl>: Found and populated {}.'.format(", ".join(populated)), pos='midCenter', fade=True)
@@ -888,6 +1086,53 @@ class ControlRigUI:
                 (-t, 0, t), (-t, 0, r), (t, 0, r), (t, 0, t),
                 (r, 0, t), (r, 0, -t), (t, 0, -t), (t, 0, -r),
                 (-t, 0, -r)
+            ]
+            
+        return cmds.curve(name=name, degree=1, point=pts)
+
+    def _createSphereCurve(self, name, radius=1.0):
+        # Create 3 circles in X, Y, Z planes
+        cx = cmds.circle(name=f"{name}_cx", normal=(1, 0, 0), radius=radius, sections=8, degree=3, constructionHistory=False)[0]
+        cy = cmds.circle(name=f"{name}_cy", normal=(0, 1, 0), radius=radius, sections=8, degree=3, constructionHistory=False)[0]
+        cz = cmds.circle(name=f"{name}_cz", normal=(0, 0, 1), radius=radius, sections=8, degree=3, constructionHistory=False)[0]
+        
+        cx_shape = cmds.listRelatives(cx, shapes=True)[0]
+        cy_shape = cmds.listRelatives(cy, shapes=True)[0]
+        cz_shape = cmds.listRelatives(cz, shapes=True)[0]
+        
+        cmds.parent(cy_shape, cz_shape, cx, shape=True, relative=True)
+        cmds.delete(cy, cz)
+        
+        return cmds.rename(cx, name)
+
+    def _createHandCurve(self, name, normal=(0, 1, 0), radius=1.0):
+        r = radius
+        if normal == (1, 0, 0) or normal == (-1, 0, 0):
+            pts = [
+                (0, r*0.8, r*1.0), (0, r*1.0, r*0.6), (0, r*1.8, -r*0.2),
+                (0, r*1.6, -r*0.5), (0, r*0.8, -r*0.1),
+                (0, r*0.8, -r*1.0), (0, r*0.8, -r*2.1), (0, r*0.4, -r*2.1), (0, r*0.4, -r*1.1),
+                (0, r*0.4, -r*2.3), (0, 0, -r*2.3), (0, 0, -r*1.1), (0, 0, -r*2.1),
+                (0, -r*0.4, -r*2.1), (0, -r*0.4, -r*1.0), (0, -r*0.4, -r*1.7), (0, -r*0.8, -r*1.7),
+                (0, -r*0.8, r*0.2), (0, -r*0.8, r*1.0), (0, r*0.8, r*1.0)
+            ]
+        elif normal == (0, 0, 1) or normal == (0, 0, -1):
+            pts = [
+                (-r*0.8, -r*1.0, 0), (-r*1.0, -r*0.6, 0), (-r*1.8, r*0.2, 0),
+                (-r*1.6, r*0.5, 0), (-r*0.8, r*0.1, 0),
+                (-r*0.8, r*1.0, 0), (-r*0.8, r*2.1, 0), (-r*0.4, r*2.1, 0), (-r*0.4, r*1.1, 0),
+                (-r*0.4, r*2.3, 0), (0, r*2.3, 0), (0, r*1.1, 0), (0, r*2.1, 0),
+                (r*0.4, r*2.1, 0), (r*0.4, r*1.0, 0), (r*0.4, r*1.7, 0), (r*0.8, r*1.7, 0),
+                (r*0.8, -r*0.2, 0), (r*0.8, -r*1.0, 0), (-r*0.8, -r*1.0, 0)
+            ]
+        else: # Default Y normal
+            pts = [
+                (-r*0.8, 0, r*1.0), (-r*1.0, 0, r*0.6), (-r*1.8, 0, -r*0.2),
+                (-r*1.6, 0, -r*0.5), (-r*0.8, 0, -r*0.1),
+                (-r*0.8, 0, -r*1.0), (-r*0.8, 0, -r*2.1), (-r*0.4, 0, -r*2.1), (-r*0.4, 0, -r*1.1),
+                (-r*0.4, 0, -r*2.3), (0, 0, -r*2.3), (0, 0, -r*1.1), (0, 0, -r*2.1),
+                (r*0.4, 0, -r*2.1), (r*0.4, 0, -r*1.0), (r*0.4, 0, -r*1.7), (r*0.8, 0, -r*1.7),
+                (r*0.8, 0, r*0.2), (r*0.8, 0, r*1.0), (-r*0.8, 0, r*1.0)
             ]
             
         return cmds.curve(name=name, degree=1, point=pts)
@@ -1450,6 +1695,10 @@ class ControlRigUI:
         if cmds.objExists(chacha_ctrl):
             cmds.textField(self.hip_ctrl_text_field, edit=True, text=chacha_ctrl)
             
+        # Auto-populate Step 8's Spine Tip Control if it exists
+        if cmds.objExists(spine_tip_ctrl):
+            cmds.textField(self.arm_spine_tip_text_field, edit=True, text=spine_tip_ctrl)
+            
         cmds.select(clear=True)
     
     def buildNeckAndHead(self, *args):
@@ -1738,7 +1987,8 @@ class ControlRigUI:
             cmds.pointConstraint(main_knee, main_ankle, main_mid_knee, maintainOffset=False)
             
             # Parent constrain & scale bridge joints to main joints
-            for jnt in main_joints_no_mid:
+            all_main_joints = path_to_thigh + [desc.split('|')[-1] for desc in ankle_descendants]
+            for jnt in all_main_joints:
                 bridge_jnt = jnt.replace("Main_JNT", "_bridgeJNT")
                 if cmds.objExists(bridge_jnt):
                     self._parentConstraintAndScale(jnt, bridge_jnt)
@@ -1997,12 +2247,15 @@ class ControlRigUI:
             # Grouping and organizing
             cmds.parent(knee_ik_zero, legIK_CTRL_GRP)
             leg_common_CTRL_GRP = cmds.group(legFKIK_ctrl_zero, name=f"{side}_legCommon_CTRL_GRP")
-            leg_CTRL_GRP = cmds.group(leg_common_CTRL_GRP, legIK_CTRL_GRP, legFK_CTRL_GRP, name=f"{side}_leg_CTRL_GRP")
-            leg_CTRL_GRP = cmds.group(leg_CTRL_GRP, name="leg_CTRL_GRP")
+            side_leg_CTRL_GRP = cmds.group(leg_common_CTRL_GRP, legIK_CTRL_GRP, legFK_CTRL_GRP, name=f"{side}_leg_CTRL_GRP")
             
-            master_ctrl_grp = cmds.ls("CTRL_GRP")
-            if master_ctrl_grp:
-                cmds.parent(leg_CTRL_GRP, master_ctrl_grp[0])
+            if cmds.objExists("leg_CTRL_GRP"):
+                cmds.parent(side_leg_CTRL_GRP, "leg_CTRL_GRP")
+            else:
+                global_leg_grp = cmds.group(side_leg_CTRL_GRP, name="leg_CTRL_GRP")
+                master_ctrl_grp = cmds.ls("CTRL_GRP")
+                if master_ctrl_grp:
+                    cmds.parent(global_leg_grp, master_ctrl_grp[0])
 
             # ------------------------------------------------------------------
             # Squash and stretch
@@ -2170,6 +2423,60 @@ class ControlRigUI:
         
         # Connect result to the thigh IK scaleX
         cmds.connectAttr(f"{stretch_cond}.outColorR", f"{thigh_ik}.scaleX", force=True)
+            
+    def programLeftArmStretch(self, *args):
+        try:
+            top_loc = cmds.textField(self.arm_top_loc_text_field, query=True, text=True)
+            bot_loc = cmds.textField(self.arm_bot_loc_text_field, query=True, text=True)
+            dist_node = cmds.textField(self.arm_dist_text_field, query=True, text=True)
+            arm_ctrl = cmds.textField(self.arm_ik_ctrl_text_field, query=True, text=True)
+            shld_ik = cmds.textField(self.arm_ik_shld_text_field, query=True, text=True)
+            global_scale = cmds.textField(self.arm_global_scale_text_field, query=True, text=True)
+            
+            if not all([top_loc, bot_loc, dist_node, arm_ctrl, shld_ik, global_scale]):
+                cmds.warning("Please populate all fields in Step 9 before running this.")
+                return
+                
+            dist_shape = cmds.listRelatives(dist_node, shapes=True)[0]
+            recordedMaxArmExtent = cmds.getAttr(f"{dist_shape}.distance")
+            
+            self._programArmStretchLogic("L", top_loc, bot_loc, dist_node, arm_ctrl, shld_ik, global_scale, recordedMaxArmExtent)
+            
+            print(f"Recorded Max Arm Extent: {recordedMaxArmExtent}")
+            
+            # Reset the arm controller back to bind pose
+            cmds.setAttr(f"{arm_ctrl}.translate", 0, 0, 0)
+            cmds.setAttr(f"{arm_ctrl}.rotate", 0, 0, 0)
+            
+        except Exception as e:
+            full_traceback = traceback.format_exc()
+            cmds.error(f"Error programming left arm stretch: {e}\n\nFull Traceback:\n{full_traceback}")
+
+    def _programArmStretchLogic(self, side, top_loc, bot_loc, dist_node, arm_ctrl, shld_ik, global_scale, recordedMaxArmExtent):
+        dist_shape = cmds.listRelatives(dist_node, shapes=True)[0]
+        
+        # MD for global scale * max extent
+        max_scale_md = cmds.createNode("multiplyDivide", name=f"{side}_armIK_maxScale_MD")
+        cmds.connectAttr(f"{global_scale}.globalScale", f"{max_scale_md}.input1X", force=True)
+        cmds.setAttr(f"{max_scale_md}.input2X", recordedMaxArmExtent)
+        
+        # MD for distance / (global scale * max extent)
+        stretch_ratio_md = cmds.createNode("multiplyDivide", name=f"{side}_armIK_stretchRatio_MD")
+        cmds.setAttr(f"{stretch_ratio_md}.operation", 2) # Divide
+        cmds.connectAttr(f"{dist_shape}.distance", f"{stretch_ratio_md}.input1X", force=True)
+        cmds.connectAttr(f"{max_scale_md}.outputX", f"{stretch_ratio_md}.input2X", force=True)
+        
+        # Condition node
+        stretch_cond = cmds.createNode("condition", name=f"{side}_armIK_stretch_COND")
+        cmds.setAttr(f"{stretch_cond}.operation", 3) # Greater or Equal
+        cmds.connectAttr(f"{dist_shape}.distance", f"{stretch_cond}.firstTerm", force=True)
+        cmds.connectAttr(f"{max_scale_md}.outputX", f"{stretch_cond}.secondTerm", force=True)
+        
+        cmds.connectAttr(f"{stretch_ratio_md}.outputX", f"{stretch_cond}.colorIfTrueR", force=True)
+        cmds.setAttr(f"{stretch_cond}.colorIfFalseR", 1.0)
+        
+        # Connect result to the shoulder IK scaleX
+        cmds.connectAttr(f"{stretch_cond}.outColorR", f"{shld_ik}.scaleX", force=True)
             
 
 
@@ -2427,8 +2734,8 @@ class ControlRigUI:
             s = ['sx', 'sy', 'sz']
             v = ['v']
             
-            # The heel control should have translations, rotateX, scales, and visibility locked and hidden
-            self._lockAndHideAttrs(f"{side}_heel_CTRL", t + ['rx'] + s + v)
+            # The heel control should have translations, rotateZ, scales, and visibility locked and hidden
+            self._lockAndHideAttrs(f"{side}_heel_CTRL", t + ['rz'] + s + v)
             
             # The ankle in and out should both have translations, rotateX, rotateY, scales and visibility locked and hidden.
             self._lockAndHideAttrs(f"{side}_ankleIn_CTRL", t + ['rx', 'ry'] + s + v)
@@ -2528,6 +2835,14 @@ class ControlRigUI:
         cmds.addAttr(clav_ctrl, longName="orient", attributeType="enum", enumName="<none>:Chest", keyable=True)
         cmds.connectAttr(clav_ctrl + ".orient", orient_const_clav + "." + clav_locator.split('|')[-1] + "W0", force=True)
         cmds.setAttr(clav_ctrl + ".orient", 1)
+        
+        if cmds.objExists("clavicle_CTRL_GRP"):
+            cmds.parent(clav_zero, "clavicle_CTRL_GRP")
+        else:
+            global_clav_grp = cmds.group(clav_zero, name="clavicle_CTRL_GRP")
+            master_ctrl_grp = cmds.ls("CTRL_GRP")
+            if master_ctrl_grp:
+                cmds.parent(global_clav_grp, master_ctrl_grp[0])
 
         # 1. Duplicate shoulder to wrist
         shoulder_dupes = cmds.duplicate(shoulder)
@@ -2586,7 +2901,8 @@ class ControlRigUI:
         cmds.pointConstraint(main_elbow, main_wrist, main_forearm, maintainOffset=False)
         
         # Parent constrain & scale bridge joints to main joints
-        for jnt in main_joints_no_mid:
+        # We use path_to_shoulder here to ensure the mid joints are included
+        for jnt in path_to_shoulder:
             bridge_jnt = jnt.replace("Main_JNT", "_bridgeJNT")
             if cmds.objExists(bridge_jnt):
                 self._parentConstraintAndScale(jnt, bridge_jnt)
@@ -2648,8 +2964,8 @@ class ControlRigUI:
         armFKIK_ctrl = self._createPlusCurve(f"{side}_armFKIK_CTRL", (0,1,0), 0.5)
         armFKIK_ctrl_zero, armFKIK_ctrl_sdk = self._groupOverAlign(armFKIK_ctrl, main_wrist)
         
-        # Move CVs back 1 unit in world Z
-        cmds.move(0, 0, -1, armFKIK_ctrl + '.cv[*]', relative=True, worldSpace=True)
+        # Move CVs back an amount in object space Y
+        cmds.move(0, -3, 0, armFKIK_ctrl + '.cv[*]', relative=True, objectSpace=True)
         
         # Constrain FK/IK switch to the wrist so it moves with the hand
         cmds.parentConstraint(main_wrist, armFKIK_ctrl_zero, maintainOffset=True)
@@ -2686,6 +3002,16 @@ class ControlRigUI:
         
         cmds.connectAttr(arm_rev_node + ".outputX", armFK_CTRL_GRP + ".visibility", force=True)
         cmds.connectAttr(armFKIK_ctrl + ".FKIK", armIK_CTRL_GRP + ".visibility", force=True)
+        
+        side_arm_CTRL_GRP = cmds.group(armCommon_CTRL_GRP, armIK_CTRL_GRP, armFK_CTRL_GRP, name=f"{side}_arm_CTRL_GRP")
+        
+        if cmds.objExists("arm_CTRL_GRP"):
+            cmds.parent(side_arm_CTRL_GRP, "arm_CTRL_GRP")
+        else:
+            global_arm_grp = cmds.group(side_arm_CTRL_GRP, name="arm_CTRL_GRP")
+            master_ctrl_grp = cmds.ls("CTRL_GRP")
+            if master_ctrl_grp:
+                cmds.parent(global_arm_grp, master_ctrl_grp[0])
         
         # Create FK Controls
         fk_shoulder_jnt = main_shoulder.replace("Main_JNT", "FK_JNT")
@@ -2743,6 +3069,149 @@ class ControlRigUI:
         # Lock and hide scale and visibility
         for ctrl in [shld_fk_ctrl, elbow_fk_ctrl, wrist_fk_ctrl]:
             self._lockAndHideAttrs(ctrl, ['sx', 'sy', 'sz', 'v'])
+            
+        # ------------------------------------------------------------------
+        # IK Chain Setup
+        # ------------------------------------------------------------------
+        ik_shoulder_jnt = main_shoulder.replace("Main_JNT", "IK_JNT")
+        ik_elbow_jnt = main_elbow.replace("Main_JNT", "IK_JNT")
+        ik_wrist_jnt = main_wrist.replace("Main_JNT", "IK_JNT")
+        
+        # Shoulder to Wrist (Rotate Plane Solver)
+        arm_ikh, arm_eff = cmds.ikHandle(startJoint=ik_shoulder_jnt, endEffector=ik_wrist_jnt, solver="ikRPsolver", sticky="sticky", name=f"{side}_arm_IKH")
+        cmds.rename(arm_eff, f"{side}_arm_EFF")
+        cmds.setAttr(f"{arm_ikh}.v", 0)
+        
+        # Clavicle drives IK shoulder
+        cmds.parentConstraint(clav_ctrl, ik_shoulder_jnt, maintainOffset=True)
+        
+        # ------------------------------------------------------------------
+        # IK Controls
+        # ------------------------------------------------------------------
+        # Wrist IK Control (Cube)
+        wrist_ik_ctrl = self._createCubeCurve(f"{side}_armIK_CTRL", radius=(elbow_len * 0.25))
+        wrist_ik_zero, wrist_ik_sdk = self._groupOverAlign(wrist_ik_ctrl, ik_wrist_jnt)
+        # scale wrist down in X to be more narrow along wrist
+        cmds.scale(0.5, 1, 1, wrist_ik_ctrl + '.cv[*]', relative=True, objectSpace=True)
+        
+        cmds.parent(arm_ikh, wrist_ik_ctrl)
+        cmds.orientConstraint(wrist_ik_ctrl, ik_wrist_jnt, maintainOffset=False)
+        cmds.parent(wrist_ik_zero, armIK_CTRL_GRP)
+        
+        # Space Switching for Wrist IK -> Clavicle
+        cmds.addAttr(wrist_ik_ctrl, longName="follow", attributeType="enum", enumName="<none>:Clavicle", keyable=True)
+        armIK_space_constraint = cmds.parentConstraint(clav_ctrl, wrist_ik_zero, maintainOffset=True)[0]
+        cmds.connectAttr(f"{wrist_ik_ctrl}.follow", f"{armIK_space_constraint}.{clav_ctrl}W0", force=True)
+        
+        # Pole Vector Control (Elbow)
+        elbow_ik_ctrl = self._createDiamondCurve(f"{side}_elbowIK_CTRL", radius=(0.25))
+        elbow_ik_sdk = cmds.group(elbow_ik_ctrl, name=elbow_ik_ctrl + "_SDK")
+        elbow_ik_zero = cmds.group(elbow_ik_sdk, name=elbow_ik_ctrl + "_0")
+        
+        pv_pos = self._calculatePoleVectorPos(ik_shoulder_jnt, ik_elbow_jnt, ik_wrist_jnt, multiplier=shld_len)
+        cmds.xform(elbow_ik_zero, translation=pv_pos, worldSpace=True)
+        
+        pv_aim = cmds.aimConstraint(ik_elbow_jnt, elbow_ik_zero, aimVector=(0,0,-1), upVector=(0,1,0), worldUpType="vector", worldUpVector=(0,1,0))[0]
+        cmds.delete(pv_aim)
+        
+        cmds.poleVectorConstraint(elbow_ik_ctrl, arm_ikh)
+        cmds.parent(elbow_ik_zero, armIK_CTRL_GRP)
+        
+        # Space Switching for Elbow PV -> Wrist IK
+        cmds.addAttr(elbow_ik_ctrl, longName="follow", attributeType="enum", enumName="<none>:Wrist", keyable=True)
+        pv_space_constraint = cmds.parentConstraint(wrist_ik_ctrl, elbow_ik_zero, maintainOffset=True)[0]
+        cmds.connectAttr(f"{elbow_ik_ctrl}.follow", f"{pv_space_constraint}.{wrist_ik_ctrl}W0", force=True)
+        
+        # Lock and hide attributes
+        self._lockAndHideAttrs(wrist_ik_ctrl, ['sx', 'sy', 'sz', 'v'])
+        self._lockAndHideAttrs(elbow_ik_ctrl, ['rx', 'ry', 'rz', 'sx', 'sy', 'sz', 'v'])
+
+        # ------------------------------------------------------------------
+        # Squash and stretch preparation
+        # ------------------------------------------------------------------
+        cmds.connectAttr(f"{ik_shoulder_jnt}.scaleX", f"{ik_elbow_jnt}.scaleX", force=True)
+        # create measure distance tools
+        shld_pos = cmds.xform(ik_shoulder_jnt, query=True, translation=True, worldSpace=True)
+        wrist_pos = cmds.xform(ik_wrist_jnt, query=True, translation=True, worldSpace=True)
+        
+        cmds.select(clear=True) # Prevent Maya from auto-parenting locators to the active selection
+        dist_shape = cmds.distanceDimension(startPoint=shld_pos, endPoint=wrist_pos)
+        dist_node = cmds.listRelatives(dist_shape, parent=True)[0]
+        
+        locs = cmds.listConnections(dist_shape + ".startPoint")
+        armIKTop_LOC = cmds.rename(locs[0], f"{side}_armIKTop_LOC")
+        
+        locs = cmds.listConnections(dist_shape + ".endPoint")
+        armIKBot_LOC = cmds.rename(locs[0], f"{side}_armIKBot_LOC")
+        
+        armIK_DIST = cmds.rename(dist_node, f"{side}_armIK_DIST")
+        
+        # Explicitly force them to World Space to override any lingering Maya auto-parenting quirks
+        for node in [armIKTop_LOC, armIKBot_LOC, armIK_DIST]:
+            try:
+                if cmds.listRelatives(node, parent=True):
+                    cmds.parent(node, world=True)
+            except Exception:
+                pass
+        
+        # Constrain locators to drivers to avoid cycles
+        cmds.parentConstraint(clav_ctrl, armIKTop_LOC, maintainOffset=True)
+        cmds.parentConstraint(wrist_ik_ctrl, armIKBot_LOC, maintainOffset=True)
+        
+        # Group the distance components to keep the outliner clean
+        armIK_dist_grp = cmds.group(armIKTop_LOC, armIKBot_LOC, armIK_DIST, name=f"{side}_armIK_DIST_GRP")
+        
+        # Organize into MISC_GRP
+        if not cmds.objExists("armIK_DIST_GRP"):
+            cmds.group(empty=True, name="armIK_DIST_GRP")
+        try: cmds.parent(armIK_dist_grp, "armIK_DIST_GRP")
+        except Exception: pass
+            
+        if not cmds.objExists("arm_MISC_GRP"):
+            cmds.group(empty=True, name="arm_MISC_GRP")
+        
+        if "arm_MISC_GRP" not in (cmds.listRelatives("armIK_DIST_GRP", parent=True) or []):
+            try: cmds.parent("armIK_DIST_GRP", "arm_MISC_GRP")
+            except Exception: pass
+            
+        if not cmds.objExists("MISC_GRP"):
+            cmds.group(empty=True, name="MISC_GRP")
+            
+        if "MISC_GRP" not in (cmds.listRelatives("arm_MISC_GRP", parent=True) or []):
+            try: cmds.parent("arm_MISC_GRP", "MISC_GRP")
+            except Exception: pass
+            
+        # Optional: ensure MISC_GRP is under all_GRP
+        if cmds.objExists("all_GRP") and "all_GRP" not in (cmds.listRelatives("MISC_GRP", parent=True) or []):
+            try: cmds.parent("MISC_GRP", "all_GRP")
+            except Exception: pass
+
+
+        # ------------------------------------------------------------------
+        # Joint Grouping
+        # ------------------------------------------------------------------
+        side_arm_jnt_grp = f"{side}_arm_JNT_GRP"
+        if not cmds.objExists(side_arm_jnt_grp):
+            cmds.group(empty=True, name=side_arm_jnt_grp)
+            
+        for j in [main_shoulder, fk_shoulder_jnt, ik_shoulder_jnt]:
+            if cmds.objExists(j):
+                try: cmds.parent(j, side_arm_jnt_grp)
+                except Exception: pass
+                
+        if not cmds.objExists("arm_JNT_GRP"):
+            cmds.group(empty=True, name="arm_JNT_GRP")
+            
+        if cmds.objExists(side_arm_jnt_grp):
+            try: cmds.parent(side_arm_jnt_grp, "arm_JNT_GRP")
+            except Exception: pass
+            
+        if not cmds.objExists("JNT_GRP"):
+            cmds.group(empty=True, name="JNT_GRP")
+            
+        if cmds.objExists("arm_JNT_GRP"):
+            try: cmds.parent("arm_JNT_GRP", "JNT_GRP")
+            except Exception: pass
 
     def buildLeftArm(self, *args):
         spine_tip = cmds.textField(self.arm_spine_tip_text_field, query=True, text=True)
@@ -2757,13 +3226,218 @@ class ControlRigUI:
         cmds.undoInfo(openChunk=True)
         try:
             self._buildArmLogic("L", spine_tip, l_clavicle, l_shoulder, l_wrist)
+            
+            # Auto populate Step 9 fields
+            if cmds.objExists("L_armIKTop_LOC"):
+                cmds.textField(self.arm_top_loc_text_field, edit=True, text="L_armIKTop_LOC")
+            if cmds.objExists("L_armIKBot_LOC"):
+                cmds.textField(self.arm_bot_loc_text_field, edit=True, text="L_armIKBot_LOC")
+            if cmds.objExists("L_armIK_DIST"):
+                cmds.textField(self.arm_dist_text_field, edit=True, text="L_armIK_DIST")
+            if cmds.objExists("L_shoulderIK_JNT"):
+                cmds.textField(self.arm_ik_shld_text_field, edit=True, text="L_shoulderIK_JNT")
+            if cmds.objExists("L_armIK_CTRL"):
+                cmds.textField(self.arm_ik_ctrl_text_field, edit=True, text="L_armIK_CTRL")
+            if cmds.objExists("all_CTRL"):
+                cmds.textField(self.arm_global_scale_text_field, edit=True, text="all_CTRL")
         except Exception as e:
             full_traceback = traceback.format_exc()
             cmds.error(f"Error building arm: {e}\n\nFull Traceback:\n{full_traceback}")
         finally:
             cmds.undoInfo(closeChunk=True)
 
+    def buildLeftHandControls(self, *args):
+        try:
+            cmds.undoInfo(openChunk=True)
+            l_wrist = cmds.textField(self.hand_wrist_joint_text_field, query=True, text=True)
+            if not l_wrist:
+                cmds.warning("Please populate the wrist joint field in Step 10.")
+                return
+            
+            self._buildHandControlsLogic("L", l_wrist)
+            
+        except Exception as e:
+            full_traceback = traceback.format_exc()
+            cmds.error(f"Error building hand controls: {e}\n\nFull Traceback:\n{full_traceback}")
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
+    def _buildHandControlsLogic(self, side, wrist_joint):
+        # Gather all descendants
+        descendants = cmds.listRelatives(wrist_joint, allDescendents=True, fullPath=True) or []
         
+        # Filter for bridge joints and ignore tips
+        finger_joints = []
+        for d in descendants:
+            short_name = d.split('|')[-1]
+            if short_name.endswith("_bridgeJNT") and "Tip" not in short_name:
+                finger_joints.append(d)
+                
+        # Sort by depth to ensure parents are processed before children
+        finger_joints.sort(key=lambda x: x.count('|'))
+
+        side_finger_ctrl_grp = cmds.group(empty=True, name=f"{side}_finger_CTRL_GRP")
+        cmds.parentConstraint(wrist_joint, side_finger_ctrl_grp, maintainOffset=False)
+        if cmds.objExists("finger_CTRL_GRP"):
+            cmds.parent(side_finger_ctrl_grp, "finger_CTRL_GRP")
+        else:
+            global_finger__grp = cmds.group(side_finger_ctrl_grp, name="finger_CTRL_GRP")
+            master_ctrl_grp = cmds.ls("CTRL_GRP")
+            if master_ctrl_grp:
+                cmds.parent(global_finger__grp, master_ctrl_grp[0])
+                
+        # Mapping joint full path to its controller transform
+        ctrl_mapping = {}
+        
+        for jnt in finger_joints:
+            short_name = jnt.split('|')[-1]
+            base_name = short_name.replace("_bridgeJNT", "")
+            ctrl_name = f"{base_name}_CTRL"
+            
+            # Determine length (distance to first child)
+            children = cmds.listRelatives(jnt, children=True, fullPath=True) or []
+            length = 1.0
+            if children:
+                pos1 = cmds.xform(jnt, query=True, worldSpace=True, translation=True)
+                pos2 = cmds.xform(children[0], query=True, worldSpace=True, translation=True)
+                diff_x = pos2[0] - pos1[0]
+                diff_y = pos2[1] - pos1[1]
+                diff_z = pos2[2] - pos1[2]
+                length = math.sqrt(diff_x**2 + diff_y**2 + diff_z**2)
+                
+            radius = length * 0.6
+            
+            is_base = "Base" in base_name
+            if is_base:
+                ctrl = self._createSphereCurve(ctrl_name, radius=(radius * 0.6))
+            else:
+                ctrl = cmds.circle(name=ctrl_name, normal=(1, 0, 0), radius=radius, constructionHistory=False)[0]
+                
+            ctrl_zero, ctrl_sdk = self._groupOverAlign(ctrl, jnt)
+            
+            if is_base:
+                cmds.xform(ctrl + ".cv[*]", translation=(0, 0, length * -1.25), relative=True, objectSpace=True)
+                
+            # Parent constraint to joint
+            cmds.parentConstraint(ctrl, jnt, maintainOffset=False)
+            self._lockAndHideAttrs(ctrl, ['tx', 'ty', 'tz', 'sx', 'sy', 'sz', 'v'])
+            
+            # FK parenting
+            parent_jnt = cmds.listRelatives(jnt, parent=True, fullPath=True)
+            if parent_jnt and parent_jnt[0] in ctrl_mapping:
+                cmds.parent(ctrl_zero, ctrl_mapping[parent_jnt[0]])
+            else:
+                cmds.parent(ctrl_zero, side_finger_ctrl_grp)
+                
+            ctrl_mapping[jnt] = ctrl
+            
+        # Create Finger Preset Controller
+        preset_ctrl_name = f"{side}_fingerPreset_CTRL"
+        preset_ctrl = self._createHandCurve(preset_ctrl_name, normal=(1, 0, 0), radius=1.0)
+        preset_zero, preset_sdk = self._groupOverAlign(preset_ctrl, wrist_joint)
+        
+        # Move away in object -Z
+        cmds.move(0, 0, -3.0, preset_ctrl + '.cv[*]', relative=True, objectSpace=True)
+        
+        # Constrain zero group to wrist
+        cmds.parentConstraint(wrist_joint, preset_zero, maintainOffset=True)
+        
+        # Add attributes
+        preset_attrs = ['curl', 'scrunch', 'relax', 'spread', 'thumbSpread']
+        for attr in preset_attrs:
+            cmds.addAttr(preset_ctrl, longName=attr, attributeType="float", keyable=True)
+            
+        # Lock and hide transforms
+        self._lockAndHideAttrs(preset_ctrl, ['tx', 'ty', 'tz', 'rx', 'ry', 'rz', 'sx', 'sy', 'sz', 'v'])
+        
+        cmds.parent(preset_zero, side_finger_ctrl_grp)
+        
+        # Auto populate step 11 fields
+        cmds.textField(self.finger_preset_ctrl_field, edit=True, text=preset_ctrl_name)
+        cmds.textField(self.finger_sdk_grp_field, edit=True, text=side_finger_ctrl_grp)
+        
+
+    def _recordFingerPreset(self, attribute, *args):
+        preset_ctrl = cmds.textField(self.finger_preset_ctrl_field, query=True, text=True)
+        finger_grp = cmds.textField(self.finger_sdk_grp_field, query=True, text=True)
+        
+        if not preset_ctrl or not cmds.objExists(preset_ctrl):
+            cmds.warning("Preset Control not found. Please populate Step 11.")
+            return
+            
+        if not finger_grp or not cmds.objExists(finger_grp):
+            cmds.warning("Finger SDK Group not found. Please populate Step 11.")
+            return
+            
+        if not cmds.attributeQuery(attribute, node=preset_ctrl, exists=True):
+            cmds.warning(f"Attribute '{attribute}' does not exist on {preset_ctrl}.")
+            return
+            
+        # Find all _SDK groups under finger_grp
+        descendants = cmds.listRelatives(finger_grp, allDescendents=True, type="transform") or []
+        sdk_groups = [d for d in descendants if d.endswith("_SDK")]
+        
+        if not sdk_groups:
+            cmds.warning(f"No _SDK groups found under {finger_grp}.")
+            return
+            
+        cmds.undoInfo(openChunk=True)
+        try:
+            pose_data = {}
+            for sdk in sdk_groups:
+                ctrls = cmds.listRelatives(sdk, children=True, type="transform") or []
+                if not ctrls: continue
+                ctrl = ctrls[0]
+                
+                # Add control and SDK transforms together so the user can pose either one.
+                pose_data[sdk] = {
+                    'tx': cmds.getAttr(f"{ctrl}.tx") + cmds.getAttr(f"{sdk}.tx"),
+                    'ty': cmds.getAttr(f"{ctrl}.ty") + cmds.getAttr(f"{sdk}.ty"),
+                    'tz': cmds.getAttr(f"{ctrl}.tz") + cmds.getAttr(f"{sdk}.tz"),
+                    'rx': cmds.getAttr(f"{ctrl}.rx") + cmds.getAttr(f"{sdk}.rx"),
+                    'ry': cmds.getAttr(f"{ctrl}.ry") + cmds.getAttr(f"{sdk}.ry"),
+                    'rz': cmds.getAttr(f"{ctrl}.rz") + cmds.getAttr(f"{sdk}.rz")
+                }
+                
+            # Key rest pose at 0.0
+            cmds.setAttr(f"{preset_ctrl}.{attribute}", 0.0)
+            for sdk in sdk_groups:
+                for attr in ['tx', 'ty', 'tz', 'rx', 'ry', 'rz']:
+                    cmds.setDrivenKeyframe(f"{sdk}.{attr}", currentDriver=f"{preset_ctrl}.{attribute}", driverValue=0.0, value=0.0)
+                    
+            # Key max pose at 10.0
+            cmds.setAttr(f"{preset_ctrl}.{attribute}", 10.0)
+            for sdk in sdk_groups:
+                ctrls = cmds.listRelatives(sdk, children=True, type="transform") or []
+                ctrl = ctrls[0] if ctrls else None
+                
+                for attr in ['tx', 'ty', 'tz', 'rx', 'ry', 'rz']:
+                    val = pose_data[sdk][attr]
+                    cmds.setDrivenKeyframe(f"{sdk}.{attr}", currentDriver=f"{preset_ctrl}.{attribute}", driverValue=10.0, value=val)
+                    
+                    # Zero out the control since the pose is now driven by the SDK!
+                    if ctrl:
+                        try:
+                            cmds.setAttr(f"{ctrl}.{attr}", 0.0)
+                        except Exception:
+                            pass
+                            
+            # Set pre and post infinity to cycle with offset
+            anim_curves = cmds.listConnections(f"{preset_ctrl}.{attribute}", type="animCurve")
+            if anim_curves:
+                cmds.setInfinity(anim_curves, pri="cycleRelative", poi="cycleRelative")
+                            
+            # Restore to 0.0
+            cmds.setAttr(f"{preset_ctrl}.{attribute}", 0.0)
+            
+            cmds.inViewMessage(amg=f'<hl>Recorded</hl>: {attribute.capitalize()} preset recorded successfully.', pos='midCenter', fade=True)
+            
+        except Exception as e:
+            full_traceback = traceback.format_exc()
+            cmds.error(f"Failed to record finger preset: {e}\n\nFull Traceback:\n{full_traceback}")
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
     def mirrorLeg(self, *args):
         hip_ctrl = cmds.textField(self.hip_ctrl_text_field, query=True, text=True)
         r_thigh_joint = cmds.textField(self.r_thigh_joint_text_field, query=True, text=True)
@@ -2836,6 +3510,132 @@ class ControlRigUI:
         except Exception as e:
             full_traceback = traceback.format_exc()
             cmds.error(f"Error mirroring leg: {e}\n\nFull Traceback:\n{full_traceback}")
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
+    def mirrorArm(self, *args):
+        spine_tip = cmds.textField(self.r_arm_spine_tip_text_field, query=True, text=True)
+        r_clavicle = cmds.textField(self.r_clavicle_joint_text_field, query=True, text=True)
+        r_shoulder = cmds.textField(self.r_shoulder_joint_text_field, query=True, text=True)
+        r_wrist = cmds.textField(self.r_wrist_joint_text_field, query=True, text=True)
+        
+        if not all([spine_tip, r_clavicle, r_shoulder, r_wrist]):
+            cmds.warning("Please populate all fields in Step 12 before mirroring the arm.")
+            return
+            
+        try:
+            cmds.undoInfo(openChunk=True)
+            
+            # 1. Build Base Arm Logic
+            self._buildArmLogic("R", spine_tip, r_clavicle, r_shoulder, r_wrist)
+            
+            # 2. Mirror Control Shapes
+            controls_to_mirror = [
+                "clavicle_CTRL", "shoulderFK_CTRL", "elbowFK_CTRL", "wristFK_CTRL",
+                "armFKIK_CTRL", "armIK_CTRL", "elbowIK_CTRL"
+            ]
+            for ctrl in controls_to_mirror:
+                self._mirrorControlShape(f"L_{ctrl}", f"R_{ctrl}")
+                
+            # 3. Program Arm Stretch
+            left_max_scale_md = "L_armIK_maxScale_MD"
+            if cmds.objExists(left_max_scale_md):
+                recorded_max_extent = cmds.getAttr(f"{left_max_scale_md}.input2X")
+                
+                r_top_loc = "R_armIKTop_LOC"
+                r_bot_loc = "R_armIKBot_LOC"
+                r_dist_node = "R_armIK_DIST"
+                r_arm_ctrl = "R_armIK_CTRL"
+                r_shld_ik = "R_shoulderIK_JNT"
+                global_scale = cmds.textField(self.arm_global_scale_text_field, query=True, text=True)
+                
+                self._programArmStretchLogic("R", r_top_loc, r_bot_loc, r_dist_node, r_arm_ctrl, r_shld_ik, global_scale, recorded_max_extent)
+            else:
+                cmds.warning("Could not find L_armIK_maxScale_MD. Skipping right arm stretch programming.")
+                
+            # 4. Build Hand Controls
+            self._buildHandControlsLogic("R", r_wrist)
+            
+            # 5. Mirror Hand Control Shapes
+            # Get all finger controls on left side
+            left_finger_grp = "L_finger_CTRL_GRP"
+            if cmds.objExists(left_finger_grp):
+                descendants = cmds.listRelatives(left_finger_grp, allDescendents=True, type="transform") or []
+                left_ctrls = [d for d in descendants if d.endswith("_CTRL")]
+                for l_ctrl in left_ctrls:
+                    r_ctrl = l_ctrl.replace("L_", "R_", 1)
+                    if cmds.objExists(r_ctrl):
+                        self._mirrorControlShape(l_ctrl, r_ctrl)
+            
+            # 6. Copy SDK values from left to right
+            l_preset_ctrl = "L_fingerPreset_CTRL"
+            r_preset_ctrl = "R_fingerPreset_CTRL"
+            if cmds.objExists(l_preset_ctrl) and cmds.objExists(r_preset_ctrl):
+                preset_attrs = ['curl', 'scrunch', 'relax', 'spread', 'thumbSpread']
+                
+                for attr in preset_attrs:
+                    # Key rest pose at 0
+                    cmds.setAttr(f"{r_preset_ctrl}.{attr}", 0.0)
+                    r_sdk_groups = [d for d in cmds.listRelatives("R_finger_CTRL_GRP", allDescendents=True, type="transform") or [] if d.endswith("_SDK")]
+                    for r_sdk in r_sdk_groups:
+                        for transform_attr in ['tx', 'ty', 'tz', 'rx', 'ry', 'rz']:
+                            cmds.setDrivenKeyframe(f"{r_sdk}.{transform_attr}", currentDriver=f"{r_preset_ctrl}.{attr}", driverValue=0.0, value=0.0)
+                
+                for attr in preset_attrs:
+                    # Temporarily evaluate left preset at 10 to grab poses
+                    original_val = cmds.getAttr(f"{l_preset_ctrl}.{attr}")
+                    cmds.setAttr(f"{l_preset_ctrl}.{attr}", 10.0)
+                    
+                    # Read left SDK poses
+                    l_sdk_groups = [d for d in cmds.listRelatives("L_finger_CTRL_GRP", allDescendents=True, type="transform") or [] if d.endswith("_SDK")]
+                    pose_data = {}
+                    for l_sdk in l_sdk_groups:
+                        pose_data[l_sdk] = {
+                            'tx': cmds.getAttr(f"{l_sdk}.tx"),
+                            'ty': cmds.getAttr(f"{l_sdk}.ty"),
+                            'tz': cmds.getAttr(f"{l_sdk}.tz"),
+                            'rx': cmds.getAttr(f"{l_sdk}.rx"),
+                            'ry': cmds.getAttr(f"{l_sdk}.ry"),
+                            'rz': cmds.getAttr(f"{l_sdk}.rz")
+                        }
+                    
+                    # Restore left preset
+                    cmds.setAttr(f"{l_preset_ctrl}.{attr}", original_val)
+                    
+                    # Set right preset to 10.0 and apply mirrored poses
+                    cmds.setAttr(f"{r_preset_ctrl}.{attr}", 10.0)
+                    
+                    for r_sdk in r_sdk_groups:
+                        l_sdk = r_sdk.replace("R_", "L_", 1)
+                        if l_sdk in pose_data:
+                            # Apply the specific mirroring math: negate translations, keep rotations
+                            mirrored_tx = pose_data[l_sdk]['tx'] * -1
+                            mirrored_ty = pose_data[l_sdk]['ty'] * -1
+                            mirrored_tz = pose_data[l_sdk]['tz'] * -1
+                            mirrored_rx = pose_data[l_sdk]['rx']
+                            mirrored_ry = pose_data[l_sdk]['ry']
+                            mirrored_rz = pose_data[l_sdk]['rz']
+                            
+                            cmds.setDrivenKeyframe(f"{r_sdk}.tx", currentDriver=f"{r_preset_ctrl}.{attr}", driverValue=10.0, value=mirrored_tx)
+                            cmds.setDrivenKeyframe(f"{r_sdk}.ty", currentDriver=f"{r_preset_ctrl}.{attr}", driverValue=10.0, value=mirrored_ty)
+                            cmds.setDrivenKeyframe(f"{r_sdk}.tz", currentDriver=f"{r_preset_ctrl}.{attr}", driverValue=10.0, value=mirrored_tz)
+                            cmds.setDrivenKeyframe(f"{r_sdk}.rx", currentDriver=f"{r_preset_ctrl}.{attr}", driverValue=10.0, value=mirrored_rx)
+                            cmds.setDrivenKeyframe(f"{r_sdk}.ry", currentDriver=f"{r_preset_ctrl}.{attr}", driverValue=10.0, value=mirrored_ry)
+                            cmds.setDrivenKeyframe(f"{r_sdk}.rz", currentDriver=f"{r_preset_ctrl}.{attr}", driverValue=10.0, value=mirrored_rz)
+                            
+                    # Set cycleRelative infinity
+                    anim_curves = cmds.listConnections(f"{r_preset_ctrl}.{attr}", type="animCurve")
+                    if anim_curves:
+                        cmds.setInfinity(anim_curves, pri="cycleRelative", poi="cycleRelative")
+                                    
+                    # Restore right preset to 0
+                    cmds.setAttr(f"{r_preset_ctrl}.{attr}", 0.0)
+                    
+            cmds.inViewMessage(amg='<hl>Right Arm</hl>: Mirrored Successfully.', pos='midCenter', fade=True)
+            
+        except Exception as e:
+            full_traceback = traceback.format_exc()
+            cmds.error(f"Error mirroring arm: {e}\n\nFull Traceback:\n{full_traceback}")
         finally:
             cmds.undoInfo(closeChunk=True)
 
