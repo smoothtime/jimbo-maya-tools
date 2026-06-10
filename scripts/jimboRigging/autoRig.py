@@ -4,6 +4,7 @@ from functools import partial
 import math
 import maya.api.OpenMaya as om
 import traceback
+import maya.mel as mel
 
 class ControlRigUI:
     
@@ -614,6 +615,27 @@ class ControlRigUI:
         
         cmds.setParent('..') # exit step12_layout
         cmds.setParent('..') # exit step12_frame
+        
+        # CHAPTER 13: Bendy Controls
+        self.step13_frame = cmds.frameLayout(label="Step 13: Bendy Controls", collapsable=True, collapse=True, marginWidth=5, marginHeight=5)
+        self.step13_layout = cmds.columnLayout(adjustableColumn=True, rowSpacing=5, columnAttach=('both', 10))
+        
+        muscle_loaded = False
+        try:
+            muscle_loaded = cmds.pluginInfo('MayaMuscle', query=True, loaded=True)
+        except Exception:
+            pass
+            
+        status_text = "LOADED" if muscle_loaded else "NOT LOADED"
+        self.muscle_status_text = cmds.text(label="MayaMuscle Plugin: {}".format(status_text), font="boldLabelFont")
+        cmds.button(label="Load MayaMuscle Plugin", height=24, command=self.loadMusclePlugin)
+        
+        cmds.separator(height=15, style='in')
+        
+        cmds.button(label="Add bendy controls", height=40, backgroundColor=(0.5, 0.3, 0.6), command=self.addBendyControls)
+        
+        cmds.setParent('..') # exit step13_layout
+        cmds.setParent('..') # exit step13_frame
 
         cmds.separator(height=20, style='none')
         
@@ -3423,9 +3445,13 @@ class ControlRigUI:
                             pass
                             
             # Set pre and post infinity to cycle with offset
-            anim_curves = cmds.listConnections(f"{preset_ctrl}.{attribute}", type="animCurve")
-            if anim_curves:
-                cmds.setInfinity(anim_curves, pri="cycleRelative", poi="cycleRelative")
+            anim_curves = cmds.listConnections(f"{preset_ctrl}.{attribute}", type="animCurve") or []
+            for ac in anim_curves:
+                try:
+                    cmds.setAttr(f"{ac}.preInfinity", 4) # 4 = cycleRelative
+                    cmds.setAttr(f"{ac}.postInfinity", 4)
+                except Exception:
+                    pass
                             
             # Restore to 0.0
             cmds.setAttr(f"{preset_ctrl}.{attribute}", 0.0)
@@ -3624,9 +3650,13 @@ class ControlRigUI:
                             cmds.setDrivenKeyframe(f"{r_sdk}.rz", currentDriver=f"{r_preset_ctrl}.{attr}", driverValue=10.0, value=mirrored_rz)
                             
                     # Set cycleRelative infinity
-                    anim_curves = cmds.listConnections(f"{r_preset_ctrl}.{attr}", type="animCurve")
-                    if anim_curves:
-                        cmds.setInfinity(anim_curves, pri="cycleRelative", poi="cycleRelative")
+                    anim_curves = cmds.listConnections(f"{r_preset_ctrl}.{attr}", type="animCurve") or []
+                    for ac in anim_curves:
+                        try:
+                            cmds.setAttr(f"{ac}.preInfinity", 4) # 4 = cycleRelative
+                            cmds.setAttr(f"{ac}.postInfinity", 4)
+                        except Exception:
+                            pass
                                     
                     # Restore right preset to 0
                     cmds.setAttr(f"{r_preset_ctrl}.{attr}", 0.0)
@@ -3664,6 +3694,170 @@ class ControlRigUI:
                 r_pos = (-l_pos[0], l_pos[1], l_pos[2])
                 # Set world space position of right CV
                 cmds.xform(f"{r_shape}.cv[{i}]", translation=r_pos, worldSpace=True)
+
+    def loadMusclePlugin(self, *args):
+        try:
+            cmds.loadPlugin('MayaMuscle')
+            cmds.text(self.muscle_status_text, edit=True, label="MayaMuscle Plugin: LOADED")
+            cmds.confirmDialog(title="Success", message="MayaMuscle plugin loaded successfully.", button=["OK"])
+        except Exception as e:
+            cmds.error("Could not load MayaMuscle plugin: {}".format(e))
+
+    def _createMuscleSpline(self, base_name, num_controls=3, num_driven=3):
+        """
+        Helper method to generate a cMuscleSpline via MEL and return handles to its nodes.
+        Returns: (spline_node, list_of_controls, list_of_driven_nodes)
+        """
+        # Ensure MayaMuscle is loaded
+        # Only define the global proc once per Maya session
+        if not mel.eval('exists "jimbo_cMuscleSplineWrapper"'):
+            mel_def = """
+            global proc string[] jimbo_cMuscleSplineWrapper(string $baseName, int $nControls, int $nDriven) {{
+                string $ctrls[];
+                string $reads[];
+                // Signature: cMS_makeSpline(baseName, nControls, controlType, detail, nRead, readType, ctrls, reads, bConstrainMid)
+                string $spline = cMS_makeSpline($baseName, $nControls, "cube", 4, $nDriven, "null", $ctrls, $reads, 1);
+                
+                string $result[];
+                $result[0] = $spline;
+                for ($i=0; $i<size($ctrls); $i++) {{
+                    $result[size($result)] = $ctrls[$i];
+                }}
+                for ($i=0; $i<size($reads); $i++) {{
+                    $result[size($result)] = $reads[$i];
+                }}
+                return $result;
+            }}
+            """
+            mel.eval(mel_def)
+            
+        try:
+            # Call the proc
+            mel_call = 'jimbo_cMuscleSplineWrapper("{}", {}, {})'.format(base_name, num_controls, num_driven)
+            result = mel.eval(mel_call)
+            
+            # Since we know the exact number of controls and driven nodes, we can just slice the flat list
+            spline = result[0]
+            controls = result[1 : 1 + num_controls]
+            driven = result[1 + num_controls : 1 + num_controls + num_driven]
+            
+            return spline, controls, driven
+            
+        except Exception as e:
+            cmds.error("Failed to create bendy setup '{}': {}".format(base_name, e))
+            return None, [], []
+
+    def addBendyControls(self, *args):
+        cmds.undoInfo(openChunk=True)
+        try:
+            sides = ["L", "R"]
+            for side in sides:
+
+                # ------------------------------
+                # Build forearm muscle spline
+                # ------------------------------
+                forearmSpline, forearmControls, foreamDriven = self._createMuscleSpline(f"{side}_foreArm", num_controls=3, num_driven=3)
+                # zero out jiggle properties of middle control
+                cmds.setAttr(f"{forearmControls[1]}.jiggle", 0)
+                cmds.setAttr(f"{forearmControls[1]}.jiggleX", 0)
+                cmds.setAttr(f"{forearmControls[1]}.jiggleY", 0)
+                cmds.setAttr(f"{forearmControls[1]}.jiggleZ", 0)
+                cmds.setAttr(f"{forearmControls[1]}.jiggleImpact", 0)
+
+                # If we used the same order of controls as the Left side, we make it so the right side spline's +Y axis would point down the bone and not matching the -X pointing
+                # axis. This could potentially pose concerns with mirroring animation of bendy controls. Look into this.
+                highIndex = 0 if (side == 'L') else 2
+                lowIndex = 2 if (side == 'L') else 0
+
+                # Snap Forearm Controls to Elbow, and Wrist, middle control is constrained
+                cmds.matchTransform(forearmControls[highIndex], f"{side}_elbowMain_JNT", position=True, rotation=True)
+                cmds.matchTransform(forearmControls[lowIndex], f"{side}_wristMain_JNT", position=True, rotation=True)
+                
+                # Rotate spline to point down bone
+                cmds.rotate(0, 0, -90, forearmControls[highIndex], relative=True, objectSpace=True)
+                cmds.rotate(0, 0, -90, forearmControls[lowIndex], relative=True, objectSpace=True)
+
+                # ------------------------------
+                # Build bicep muscle spline
+                # ------------------------------
+                bicepSpline, bicepControls, bicepDriven = self._createMuscleSpline(f"{side}_bicep", num_controls=3, num_driven=3)
+                # zero out jiggle properties of middle control
+                cmds.setAttr(f"{bicepControls[1]}.jiggle", 0)
+                cmds.setAttr(f"{bicepControls[1]}.jiggleX", 0)
+                cmds.setAttr(f"{bicepControls[1]}.jiggleY", 0)
+                cmds.setAttr(f"{bicepControls[1]}.jiggleZ", 0)
+                cmds.setAttr(f"{bicepControls[1]}.jiggleImpact", 0)
+
+                # Snap bicep Controls to Shoulder, and Mid shoulder, middle control is constrained
+                cmds.matchTransform(bicepControls[highIndex], f"{side}_shoulderMain_JNT", position=True, rotation=True)
+                cmds.matchTransform(bicepControls[lowIndex], f"{side}_midShoulderMain_JNT", position=True, rotation=True)
+                
+                # Rotate spline to point down bone and so elbow bend doesn't snap the midShoulder
+                cmds.rotate(0, -90, -90, bicepControls[highIndex], relative=True, objectSpace=True)
+                cmds.rotate(0, -90, -90, bicepControls[lowIndex], relative=True, objectSpace=True)
+
+                # With end of muscle spline oriented down the chain, snap to elbow
+                cmds.matchTransform(bicepControls[lowIndex], f"{side}_elbowMain_JNT", position=True)
+
+                # ------------------------------
+                # Break connections on bridge from main and delete parent constraints
+                # ------------------------------
+                arm_bridge_joints = [
+                    f"{side}_shoulder_bridgeJNT",
+                    f"{side}_midShoulder_bridgeJNT",
+                    f"{side}_elbow_bridgeJNT",
+                    f"{side}_forearm_bridgeJNT",
+                    f"{side}_wrist_bridgeJNT"
+                ]
+                
+                for jnt in arm_bridge_joints:
+                    if not cmds.objExists(jnt):
+                        cmds.warning(f"did not find {jnt} to break connections on for bendy controls")
+                        continue
+                        
+                    # Delete parent constraints
+                    parent_constraints = cmds.listRelatives(jnt, type="parentConstraint")
+                    if parent_constraints:
+                        cmds.delete(parent_constraints)
+                        
+                    # Break scale connections
+                    for axis in ['X', 'Y', 'Z']:
+                        plug = f"{jnt}.scale{axis}"
+                        connections = cmds.listConnections(plug, source=True, destination=False, plugs=True)
+                        if connections:
+                            cmds.disconnectAttr(connections[0], plug)
+                            
+                # ------------------------------
+                # Build Bendy Controls (Spheres)
+                # ------------------------------
+                bendy_controls_data = [
+                    (f"{side}_shoulderBendy_CTRL", f"{side}_shoulderMain_JNT"),
+                    (f"{side}_elbowBendy_CTRL", f"{side}_elbowMain_JNT"),
+                    (f"{side}_wristBendy_CTRL", f"{side}_wristMain_JNT")
+                ]
+                
+                for ctrl_name, target_jnt in bendy_controls_data:
+                    if cmds.objExists(target_jnt):
+                        # Create the spherical control
+                        ctrl = self._createSphereCurve(ctrl_name, radius=0.15)
+                        
+                        # Group over align to the corresponding joint
+                        zero_grp, sdk_grp = self._groupOverAlign(ctrl, target_jnt)
+
+                        # push CVs out of joint
+                        move_z = -1.5 if side == "L" else 1.5
+                        shapes = cmds.listRelatives(ctrl, shapes=True) or []
+                        for shape in shapes:
+                            cmds.move(0, 0, move_z, f"{shape}.cv[*]", relative=True, objectSpace=True)
+                        
+                        # Parent constrain the _0 offset group to the main joint without offset
+                        cmds.parentConstraint(target_jnt, zero_grp, maintainOffset=False)
+                    else:
+                        cmds.warning(f"Target joint {target_jnt} not found, skipping control {ctrl_name}")
+                        
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
 
 if __name__ == "__main__":
     ui = ControlRigUI()
