@@ -3708,7 +3708,6 @@ class ControlRigUI:
         Helper method to generate a cMuscleSpline via MEL and return handles to its nodes.
         Returns: (spline_node, list_of_controls, list_of_driven_nodes)
         """
-        # Ensure MayaMuscle is loaded
         # Only define the global proc once per Maya session
         if not mel.eval('exists "jimbo_cMuscleSplineWrapper"'):
             mel_def = """
@@ -3830,10 +3829,14 @@ class ControlRigUI:
                 # ------------------------------
                 # Build Bendy Controls (Spheres)
                 # ------------------------------
+                shoulder_bendy_ctrl = f"{side}_shoulderBendy_CTRL"
+                elbow_bendy_ctrl = f"{side}_elbowBendy_CTRL"
+                wrist_bendy_ctrl = f"{side}_wristBendy_CTRL"
+                
                 bendy_controls_data = [
-                    (f"{side}_shoulderBendy_CTRL", f"{side}_shoulderMain_JNT"),
-                    (f"{side}_elbowBendy_CTRL", f"{side}_elbowMain_JNT"),
-                    (f"{side}_wristBendy_CTRL", f"{side}_wristMain_JNT")
+                    (shoulder_bendy_ctrl, f"{side}_shoulderMain_JNT"),
+                    (elbow_bendy_ctrl, f"{side}_elbowMain_JNT"),
+                    (wrist_bendy_ctrl, f"{side}_wristMain_JNT")
                 ]
                 
                 for ctrl_name, target_jnt in bendy_controls_data:
@@ -3852,8 +3855,125 @@ class ControlRigUI:
                         
                         # Parent constrain the _0 offset group to the main joint without offset
                         cmds.parentConstraint(target_jnt, zero_grp, maintainOffset=False)
+
                     else:
                         cmds.warning(f"Target joint {target_jnt} not found, skipping control {ctrl_name}")
+                        
+                # ------------------------------
+                # Build Mid-joint Bendy Controls (Spheres)
+                # ------------------------------
+                bicep_mid_bendy_ctrl = f"{side}_bicepBendy_CTRL"
+                forearm_mid_bendy_ctrl = f"{side}_forearmBendy_CTRL"
+                
+                mid_bendy_controls_data = [
+                    (bicep_mid_bendy_ctrl, f"{side}_midShoulderMain_JNT", bicepControls[1]),
+                    (forearm_mid_bendy_ctrl, f"{side}_forearmMain_JNT", forearmControls[1]),
+                ]
+
+                for ctrl_name, target_jnt, spline in mid_bendy_controls_data:
+                    if cmds.objExists(target_jnt):
+                        # Create the spherical control
+                        ctrl = self._createSphereCurve(ctrl_name, radius=0.15)
+                        
+                        # Group over align to the corresponding joint
+                        zero_grp, sdk_grp = self._groupOverAlign(ctrl, target_jnt)
+
+                        # push CVs out of joint
+                        move_z = -1.5 if side == "L" else 1.5
+                        shapes = cmds.listRelatives(ctrl, shapes=True) or []
+                        for shape in shapes:
+                            cmds.move(0, 0, move_z, f"{shape}.cv[*]", relative=True, objectSpace=True)
+
+                        # constrain control offset group to spline
+                        cmds.parentConstraint(spline, zero_grp, maintainOffset=True)
+                    else:
+                        cmds.warning(f"Target joint {target_jnt} not found, skipping control {ctrl_name}")
+
+                all_bendy_controls = [
+                    shoulder_bendy_ctrl,
+                    bicep_mid_bendy_ctrl,
+                    elbow_bendy_ctrl,
+                    forearm_mid_bendy_ctrl,
+                    wrist_bendy_ctrl
+                ]
+
+                for ctrl in all_bendy_controls:
+                    if not cmds.objExists(ctrl):
+                        cmds.error(f"Required bendy control {ctrl} does not exist! Aborting.")
+
+                # ------------------------------
+                # Constrain Muscle Splines to Bendy Controls
+                # ------------------------------
+                # The shoulder bendy control drives the top of the bicep spline
+                cmds.parentConstraint(all_bendy_controls[0], bicepControls[highIndex], maintainOffset=True)
+                
+                # The elbow bendy control drives the bottom of the bicep spline AND the top of the forearm spline
+                cmds.parentConstraint(all_bendy_controls[2], bicepControls[lowIndex], maintainOffset=True)
+                cmds.parentConstraint(all_bendy_controls[2], forearmControls[highIndex], maintainOffset=True)
+                
+                # The wrist bendy control is a placeholder for aiming that doesn't get operated upon.
+                # Its constraint to the main joint will have it orient according to the FK and IK controls
+
+                # ------------------------------
+                # Create Aim Constraint Locators
+                # ------------------------------
+                bendy_locs = []
+                up_locs = []
+                
+                y_move = -3 if side == "L" else 3
+                
+                for i, ctrl in enumerate(all_bendy_controls):
+                    # Create aim locator
+                    aim_loc = cmds.spaceLocator(name=f"{ctrl}_LOC")[0]
+                    cmds.parent(aim_loc, ctrl)
+                    # Zero out transforms
+                    for attr in ['.tx', '.ty', '.tz', '.rx', '.ry', '.rz']:
+                        cmds.setAttr(aim_loc + attr, 0)
+                    bendy_locs.append(aim_loc)
+                    
+                    # Create up locator (excluding the last wrist control)
+                    if i < len(all_bendy_controls) - 1:
+                        up_loc = cmds.spaceLocator(name=f"{aim_loc}_UP")[0]
+                        cmds.parent(up_loc, ctrl)
+                        for attr in ['.tx', '.ty', '.tz', '.rx', '.ry', '.rz']:
+                            cmds.setAttr(up_loc + attr, 0)
+                        # Move object space Y
+                        cmds.move(0, y_move, 0, up_loc, relative=True, objectSpace=True)
+                        up_locs.append(up_loc)
+
+                # Wire up Aim Constraints
+                aim_vec = (1, 0, 0) if side == "L" else (-1, 0, 0)
+                up_vec = (0, -1, 0) if side == "L" else (0, 1, 0)
+                
+                for i in range(len(up_locs)):
+                    current_loc = bendy_locs[i]
+                    next_loc = bendy_locs[i+1]
+                    current_up = up_locs[i]
+                    
+                    cmds.aimConstraint(
+                        next_loc, 
+                        current_loc, 
+                        aimVector=aim_vec, 
+                        upVector=up_vec, 
+                        worldUpType="object", 
+                        worldUpObject=current_up,
+                        maintainOffset=False
+                    )
+
+                # ------------------------------
+                # Constrain bridge joints to locators
+                # ------------------------------
+                bridge_joints = [
+                    f"{side}_shoulder_bridgeJNT",
+                    f"{side}_midShoulder_bridgeJNT",
+                    f"{side}_elbow_bridgeJNT",
+                    f"{side}_forearm_bridgeJNT",
+                    f"{side}_wrist_bridgeJNT"
+                ]
+
+                for i in range(len(bridge_joints)):
+                    self._parentConstraintAndScale(bendy_locs[i], bridge_joints[i])
+                
                         
         finally:
             cmds.undoInfo(closeChunk=True)
