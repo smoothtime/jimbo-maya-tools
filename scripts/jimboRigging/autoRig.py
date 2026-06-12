@@ -3912,7 +3912,9 @@ class ControlRigUI:
                 cmds.parentConstraint(all_bendy_controls[2], forearmControls[highIndex], maintainOffset=True)
                 
                 # The wrist bendy control is a placeholder for aiming that doesn't get operated upon.
-                # Its constraint to the main joint will have it orient according to the FK and IK controls
+                # Its constraint to the main joint will have it orient according to the FK and IK controls, 
+                # but we still need to move the muscle spline with it
+                cmds.parentConstraint(all_bendy_controls[4], forearmControls[lowIndex], maintainOffset=True)
 
                 # ------------------------------
                 # Create Aim Constraint Locators
@@ -3927,7 +3929,7 @@ class ControlRigUI:
                     aim_loc = cmds.spaceLocator(name=f"{ctrl}_LOC")[0]
                     cmds.parent(aim_loc, ctrl)
                     # Zero out transforms
-                    for attr in ['.tx', '.ty', '.tz', '.rx', '.ry', '.rz']:
+                    for attr in ['.tx', '.ty', '.tz', '.rx', '.ry', '.rz', '.v']:
                         cmds.setAttr(aim_loc + attr, 0)
                     bendy_locs.append(aim_loc)
                     
@@ -3935,7 +3937,7 @@ class ControlRigUI:
                     if i < len(all_bendy_controls) - 1:
                         up_loc = cmds.spaceLocator(name=f"{aim_loc}_UP")[0]
                         cmds.parent(up_loc, ctrl)
-                        for attr in ['.tx', '.ty', '.tz', '.rx', '.ry', '.rz']:
+                        for attr in ['.tx', '.ty', '.tz', '.rx', '.ry', '.rz', '.v']:
                             cmds.setAttr(up_loc + attr, 0)
                         # Move object space Y
                         cmds.move(0, y_move, 0, up_loc, relative=True, objectSpace=True)
@@ -3972,9 +3974,54 @@ class ControlRigUI:
                 ]
 
                 for i in range(len(bridge_joints)):
-                    self._parentConstraintAndScale(bendy_locs[i], bridge_joints[i])
+                    cmds.parentConstraint(bendy_locs[i], bridge_joints[i], maintainOffset=True)
+                    for attr in ['scaleX', 'scaleY', 'scaleZ']:
+                        cmds.connectAttr(all_bendy_controls[i] + "." + attr, bridge_joints[i] + "." + attr, force=True)
+
+                # ------------------------------
+                # Group and Organize
+                # ------------------------------
+                # Helper to ensure parenting
+                def ensure_parent(child, parent):
+                    current = cmds.listRelatives(child, parent=True)
+                    if not current or current[0].split('|')[-1] != parent:
+                        cmds.parent(child, parent)
+
+                if not cmds.objExists("bendy_CTRL_GRP"):
+                    cmds.group(empty=True, name="bendy_CTRL_GRP")
+                ensure_parent("bendy_CTRL_GRP", "CTRL_GRP")
+
+                if not cmds.objExists("armBendy_CTRL_GRP"):
+                    cmds.group(empty=True, name="armBendy_CTRL_GRP")
+                ensure_parent("armBendy_CTRL_GRP", "bendy_CTRL_GRP")
                 
-                        
+                if not cmds.objExists(f"{side}_armBendy_CTRL_GRP"):
+                    cmds.group(empty=True, name=f"{side}_armBendy_CTRL_GRP")
+                ensure_parent(f"{side}_armBendy_CTRL_GRP", "armBendy_CTRL_GRP")
+                
+                for ctrl in all_bendy_controls:
+                    ensure_parent(f"{ctrl}_0", f"{side}_armBendy_CTRL_GRP")
+
+                if not cmds.objExists("bendy_MISC_GRP"):
+                    cmds.group(empty=True, name="bendy_MISC_GRP")
+                ensure_parent("bendy_MISC_GRP", "MISC_GRP")
+
+                if not cmds.objExists("bicepBendy_GRP"):
+                    cmds.group(empty=True, name="bicepBendy_GRP")
+                ensure_parent("bicepBendy_GRP", "bendy_MISC_GRP")
+                # the spline creation script wraps the spline in a Rig group we want to parent to the bendy_GRP
+                bicep_spline_transform = cmds.listRelatives(bicepSpline, parent=True)[0]
+                bicep_rig_group = cmds.listRelatives(bicep_spline_transform, parent=True)[0]
+                ensure_parent(bicep_rig_group, "bicepBendy_GRP")
+
+                if not cmds.objExists("forearmBendy_GRP"):
+                    cmds.group(empty=True, name="forearmBendy_GRP")
+                ensure_parent("forearmBendy_GRP", "bendy_MISC_GRP")
+                # the spline creation script wraps the spline in a Rig group we want to parent to the bendy_GRP
+                forearm_spline_transform = cmds.listRelatives(forearmSpline, parent=True)[0]
+                forearm_rig_group = cmds.listRelatives(forearm_spline_transform, parent=True)[0]
+                ensure_parent(forearm_rig_group, "forearmBendy_GRP")
+                
         finally:
             cmds.undoInfo(closeChunk=True)
 
